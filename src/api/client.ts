@@ -4,6 +4,7 @@ import type {
   LetterView,
   MemberView,
   NewExhibitInput,
+  SessionView,
   StudioData,
   WingSlot,
 } from '../../shared/types';
@@ -56,7 +57,7 @@ export const api = {
   health: () => request<{ ok: boolean; configured: boolean; guestList: boolean }>('/health'),
   allowed: (email: string) =>
     request<{ allowed: boolean; configured: boolean }>(`/auth/allowed?email=${encodeURIComponent(email)}`),
-  me: (token: string) => request<{ member: MemberView; museum: { name: string } }>('/me', { token }),
+  me: (token: string) => request<SessionView>('/me', { token }),
   collection: (token: string) => request<{ collection: unknown }>('/collection', { token }),
   studio: (token: string) => request<StudioData>('/studio', { token }),
   updateProfile: (token: string, name: string) =>

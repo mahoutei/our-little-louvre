@@ -12,6 +12,7 @@ type AuthContextValue = {
   loading: boolean;
   session: Session | null;
   member: MemberView | null;
+  pauseMessage: string | null;
   accessError: string | null;
   signIn: (email: string) => Promise<'sent' | 'not-allowed'>;
   signOut: () => Promise<void>;
@@ -25,6 +26,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [member, setMember] = useState<MemberView | null>(demoMode ? demoMember : null);
+  const [pauseMessage, setPauseMessage] = useState<string | null>(null);
   const [configured, setConfigured] = useState(demoMode || supabaseConfigured);
   const [loading, setLoading] = useState(!demoMode);
   const [accessError, setAccessError] = useState<string | null>(null);
@@ -41,12 +43,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!current) {
         setSession(null);
         setMember(null);
+        setPauseMessage(null);
         return null;
       }
       setSession(current);
       try {
         const result = await api.me(current.access_token);
         setMember(result.member);
+        setPauseMessage(result.pause?.message ?? null);
         setAccessError(null);
         return result.member;
       } catch (error) {
@@ -54,10 +58,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await supabase.auth.signOut();
           setSession(null);
           setMember(null);
+          setPauseMessage(null);
           setAccessError(error.status === 403 ? error.message : null);
           return null;
         }
         setMember(null);
+        setPauseMessage(null);
         setAccessError(error instanceof Error ? error.message : 'The museum office could not be reached.');
         return null;
       }
@@ -85,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(next);
       if (event === 'SIGNED_OUT') {
         setMember(null);
+        setPauseMessage(null);
         setAccessError(null);
         setLoading(false);
       }
@@ -138,6 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase?.auth.signOut();
     setSession(null);
     setMember(null);
+    setPauseMessage(null);
     setAccessError(null);
     if (window.location.pathname !== '/') window.location.assign('/');
   }, []);
@@ -156,13 +164,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     session,
     member,
+    pauseMessage,
     accessError,
     signIn,
     signOut,
     token,
     refreshMember,
     updateMember,
-  }), [accessError, configured, loading, member, refreshMember, session, signIn, signOut, token, updateMember]);
+  }), [accessError, configured, loading, member, pauseMessage, refreshMember, session, signIn, signOut, token, updateMember]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

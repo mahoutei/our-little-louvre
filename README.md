@@ -36,6 +36,7 @@ You will need Node 22 LTS or newer and a [Supabase](https://supabase.com) projec
    | `VITE_SUPABASE_PUBLISHABLE_KEY` | The same publishable key. |
    | `OWNER_EMAIL`, `PARTNER_EMAIL` | The two addresses allowed into the museum. |
    | `OWNER_NAME`, `PARTNER_NAME` | The names shown on labels and in the studio. |
+   | `PARTNER_PAUSED`, `PARTNER_PAUSED_MESSAGE` | Optional. Hold the partner’s side behind a cover page while a surprise is prepared. See [Keeping the surprise](#keeping-the-surprise). |
 
 3. Create the private storage bucket and lock down the database tables.
 
@@ -93,6 +94,19 @@ The masthead’s **Private studio** link opens `/studio`. Both members have the 
 - **Name on the label** — set the name shown on the labels you hang.
 - **The New Wing** — edit a photograph’s title, date, story, and description; hide it from the museum without deleting it; or remove it and free its frame.
 - **The Gallery of Us** — edit the labels of the ten baked originals.
+
+### Keeping the surprise
+
+The owner can keep preparing the museum without spoiling it for the partner:
+
+```powershell
+PARTNER_PAUSED=1
+PARTNER_PAUSED_MESSAGE="Dean is cooking something"
+```
+
+With the flag on, the partner’s sign-in still succeeds, but the museum and studio routes answer `423` and the browser shows a neutral cover page with the configured message. The owner is never paused. The page deliberately has no museum name, no logo, no photographs, and no canvas, so an early visit does not reveal the project; its document title is the message itself.
+
+Set `PARTNER_PAUSED=1` in `.env.local` for local work, and in the hosting environment for production. Either way the API reads the value at startup, so restart `npm run dev` (or redeploy) after changing it. Remove the flag, or set it to `0`, to reopen the partner’s side. `PARTNER_PAUSED_MESSAGE` defaults to `Dean is cooking something`.
 
 Nothing you add is readable without a session: the museum, the photo index, the collection API, the studio API, the database tables, and the uploaded photographs are all private. The ten baked demo photographs and the sample manifest in `public/content` are served as static preview files, so keep only fictional demo material there. The real letter and every uploaded photograph live in Supabase behind the API.
 

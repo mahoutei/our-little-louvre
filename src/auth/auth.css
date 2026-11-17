@@ -213,6 +213,20 @@
   outline-color: #8a5a2a;
 }
 
+/* A neutral holding page for the partner while the surprise is prepared. */
+.pause-scene {
+  background: radial-gradient(ellipse at 50% 36%, #6a4a2c, #24170f 62%, #0f0b08 100%);
+}
+
+.pause-stage { align-items: center; }
+
+.pause-card {
+  width: min(100%, 31rem);
+  text-align: center;
+}
+
+.pause-card .gate-title { font-size: clamp(2.35rem, 5.6vw, 3.6rem); }
+
 @media (max-width: 720px) {
   .gate-stage {
     align-items: center;

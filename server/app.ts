@@ -4,7 +4,7 @@ import { STORAGE_BUCKET, UPLOAD_IMAGE_TYPES } from '../shared/config';
 import { nextWingSlot, WingFullError } from '../shared/slots';
 import type { ExhibitPatch, NewExhibitInput, WingSlot } from '../shared/types';
 import { fieldsFrom, tidyCaption, validateExhibitFields } from '../shared/validation';
-import { allowedEmailResult, memberView, requireMember, type AppBindings } from './auth';
+import { allowedEmailResult, memberView, pauseMessageFor, requireMember, requireOpenMuseum, type AppBindings } from './auth';
 import { env, guestListReady, serverReady } from './env';
 import { ApiError, readJson } from './http';
 import { prisma } from './prisma';
@@ -61,20 +61,25 @@ app.get('/health', (c) => c.json({ ok: true, configured: serverReady(), guestLis
 app.get('/auth/allowed', (c) => c.json(allowedEmailResult(c.req.query('email') ?? '')));
 
 app.use('/me', requireMember);
-app.use('/collection', requireMember);
-app.use('/studio', requireMember);
-app.use('/uploads', requireMember);
-app.use('/uploads/*', requireMember);
-app.use('/exhibits', requireMember);
-app.use('/exhibits/*', requireMember);
-app.use('/letter', requireMember);
+app.use('/collection', requireMember, requireOpenMuseum);
+app.use('/studio', requireMember, requireOpenMuseum);
+app.use('/uploads', requireMember, requireOpenMuseum);
+app.use('/uploads/*', requireMember, requireOpenMuseum);
+app.use('/exhibits', requireMember, requireOpenMuseum);
+app.use('/exhibits/*', requireMember, requireOpenMuseum);
+app.use('/letter', requireMember, requireOpenMuseum);
 
 app.get('/me', (c) => {
   const member = c.get('member');
-  return c.json({ member: memberView(member), museum: { name: env.museumName } });
+  const pause = pauseMessageFor(member);
+  return c.json({
+    member: memberView(member),
+    museum: { name: env.museumName },
+    ...(pause ? { pause: { message: pause } } : {}),
+  });
 });
 
-app.patch('/me', async (c) => {
+app.patch('/me', requireOpenMuseum, async (c) => {
   const member = c.get('member');
   const body = await readJson<{ name?: unknown }>(c);
   const name = typeof body.name === 'string' ? body.name.trim().replace(/\s+/g, ' ') : '';

@@ -49,6 +49,13 @@ export type MemberView = {
   role: Role;
 };
 
+export type SessionView = {
+  member: MemberView;
+  museum: { name: string };
+  /** Present while the partner's side is deliberately held behind a cover page. */
+  pause?: { message: string };
+};
+
 export type Collection = {
   museum: { name: string };
   member: MemberView;

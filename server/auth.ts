@@ -1,5 +1,6 @@
 import type { Member } from '@prisma/client';
 import type { MiddlewareHandler } from 'hono';
+import { pausedMessageFor } from '../shared/pause';
 import { ApiError } from './http';
 import { env, guestListReady, isAllowedEmail, nameFor, roleFor, serverReady } from './env';
 import { prisma } from './prisma';
@@ -25,25 +26,39 @@ export const requireMember: MiddlewareHandler<AppBindings> = async (c, next) => 
 
   let member = await prisma.member.findUnique({ where: { authId: data.user.id } });
   if (!member) {
-    const byEmail = await prisma.member.findUnique({ where: { email } });
-    if (byEmail) {
-      member = await prisma.member.update({ where: { id: byEmail.id }, data: { authId: data.user.id } });
-    } else if (isAllowedEmail(email)) {
-      member = await prisma.member.create({
-        data: {
-          authId: data.user.id,
-          email,
-          name: nameFor(email),
-          role: roleFor(email),
-        },
-      });
-    }
+    if (!isAllowedEmail(email)) throw new ApiError(403, 'This museum is kept for two people.');
+    // Concurrent first requests would otherwise both try to create the same row.
+    member = await prisma.member.upsert({
+      where: { email },
+      update: { authId: data.user.id },
+      create: {
+        authId: data.user.id,
+        email,
+        name: nameFor(email),
+        role: roleFor(email),
+      },
+    });
   }
 
   if (!member) throw new ApiError(403, 'This museum is kept for two people.');
   // Changing the guest list must revoke existing sessions as well as block new ones.
   if (!isAllowedEmail(member.email)) throw new ApiError(403, 'This museum is kept for two people.');
   c.set('member', member);
+  await next();
+};
+
+/**
+ * The owner can keep preparing a surprise while the partner's session exists but
+ * reveals no collection data. /api/me stays readable so the browser knows which
+ * holding page to show.
+ */
+export function pauseMessageFor(member: Member): string | null {
+  return pausedMessageFor(member.role, env.partnerPaused, env.partnerPausedMessage);
+}
+
+export const requireOpenMuseum: MiddlewareHandler<AppBindings> = async (c, next) => {
+  const pause = pauseMessageFor(c.get('member'));
+  if (pause) throw new ApiError(423, pause);
   await next();
 };
 

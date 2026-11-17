@@ -1,5 +1,6 @@
 import { config } from 'dotenv';
 import { DEFAULT_ALLEY_CAPACITY, DEFAULT_MAX_ALLEYS } from '../shared/config';
+import { DEFAULT_PARTNER_PAUSE_MESSAGE } from '../shared/pause';
 
 // Vercel supplies real environment variables. Locally, the secrets live in
 // .env.local, which is gitignored. Never import this module in browser code.
@@ -15,6 +16,7 @@ const integer = (name: string, fallback: number) => {
 
 const ownerEmail = text('OWNER_EMAIL').toLowerCase();
 const partnerEmail = text('PARTNER_EMAIL').toLowerCase();
+const flags = (name: string) => /^(1|true|yes|on)$/i.test(text(name));
 
 export const env = {
   databaseUrl: text('DATABASE_URL'),
@@ -26,6 +28,8 @@ export const env = {
   partnerEmail,
   ownerName: text('OWNER_NAME'),
   partnerName: text('PARTNER_NAME'),
+  partnerPaused: flags('PARTNER_PAUSED'),
+  partnerPausedMessage: text('PARTNER_PAUSED_MESSAGE') || DEFAULT_PARTNER_PAUSE_MESSAGE,
   museumName: text('MUSEUM_NAME') || 'Our Little Louvre',
   alleyCapacity: integer('WING_ALLEY_CAPACITY', DEFAULT_ALLEY_CAPACITY),
   maxAlleys: integer('WING_MAX_ALLEYS', DEFAULT_MAX_ALLEYS),

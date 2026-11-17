@@ -19,13 +19,40 @@ function GateScene({ children, quiet = false }: { children: ReactNode; quiet?: b
   </main>;
 }
 
+function useDocumentTitle(title: string) {
+  useEffect(() => {
+    const previous = document.title;
+    document.title = title;
+    return () => { document.title = previous; };
+  }, [title]);
+}
+
 function LoadingGate() {
-  return <GateScene quiet>
-    <p className="eyebrow">Private collection</p>
-    <h1 id="gate-heading" className="gate-title">Unlocking the museum</h1>
-    <p className="gate-copy">Checking your key and opening the lights.</p>
-    <span className="loading-ring gate-ring" role="status" aria-label="Opening the museum" />
-  </GateScene>;
+  useDocumentTitle('One moment');
+  return <main className="gate-scene pause-scene gate-scene--quiet">
+    <div className="gate-stage pause-stage">
+      <section className="gate-card pause-card" aria-labelledby="gate-heading">
+        <p className="eyebrow">One moment</p>
+        <h1 id="gate-heading" className="gate-title">Just a moment</h1>
+        <p className="gate-copy">We’re checking your key.</p>
+        <span className="loading-ring gate-ring" role="status" aria-label="Opening" />
+      </section>
+    </div>
+  </main>;
+}
+
+function PauseGate({ message }: { message: string }) {
+  useDocumentTitle(message);
+  return <main className="gate-scene pause-scene">
+    <div className="gate-stage pause-stage">
+      <section className="gate-card pause-card" aria-labelledby="pause-heading">
+        <p className="eyebrow">From the kitchen</p>
+        <h1 id="pause-heading" className="gate-title">{message}</h1>
+        <p className="gate-copy">Something good is on the stove. Dinner isn’t ready yet.</p>
+        <p className="gate-note">No peeking. — D.</p>
+      </section>
+    </div>
+  </main>;
 }
 
 function SetupGate({ live }: { live: boolean }) {
@@ -63,11 +90,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!auth.member || window.location.pathname !== '/auth/callback') return;
+    if (!auth.member || auth.pauseMessage || window.location.pathname !== '/auth/callback') return;
     const returnTo = localStorage.getItem(RETURN_TO_KEY) || '/';
     localStorage.removeItem(RETURN_TO_KEY);
     window.location.replace(returnTo.startsWith('/') ? returnTo : '/');
-  }, [auth.member]);
+  }, [auth.member, auth.pauseMessage]);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -109,6 +136,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
 
   if (auth.demo) return <>{children}</>;
+  if (auth.pauseMessage) return <PauseGate message={auth.pauseMessage} />;
   if (auth.member) return <>{children}</>;
   if (auth.loading) return <LoadingGate />;
   if (!supabaseConfigured) return <SetupGate live={false} />;
