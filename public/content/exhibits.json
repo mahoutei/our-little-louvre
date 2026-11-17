@@ -1,0 +1,23 @@
+{
+  "exhibits": [
+    {"id":"after-the-rain","anchor":"EXHIBIT_01","title":"After the Rain","caption":"The sidewalks were still shining when the café lights came on. We walked the long way back.","alt":"A red café awning and gold window lights reflected in a wet Paris sidewalk","thumbnailUrl":"/content/photos/01-small.webp","imageUrl":"/content/photos/01.webp"},
+    {"id":"a-table-for-two","anchor":"EXHIBIT_02","title":"A Table for Two","caption":"We ordered another round of coffee so we could stay at that little table a while longer.","alt":"Two espresso cups on a café table in dappled sunlight","thumbnailUrl":"/content/photos/02-small.webp","imageUrl":"/content/photos/02.webp"},
+    {"id":"the-first-light","anchor":"EXHIBIT_03","title":"The First Light","caption":"The river was quiet that morning. From the bridge we watched the city wake up one window at a time.","alt":"An old stone bridge across the Seine in the soft light of dawn","thumbnailUrl":"/content/photos/03-small.webp","imageUrl":"/content/photos/03.webp"},
+    {"id":"a-road-through-provence","anchor":"EXHIBIT_05","title":"A Road Through Provence","caption":"We pulled over for the lavender and stayed until the shadows reached across the road.","alt":"Rows of purple lavender beside tall cypress trees","thumbnailUrl":"/content/photos/04-small.webp","imageUrl":"/content/photos/04.webp"},
+    {"id":"the-open-window","anchor":"EXHIBIT_06","title":"The Open Window","caption":"We could hear the street through the curtains. Someone downstairs was setting tables for lunch.","alt":"Cream curtains beside a sunlit open window","thumbnailUrl":"/content/photos/05-small.webp","imageUrl":"/content/photos/05.webp"},
+    {"id":"market-day","anchor":"EXHIBIT_07","title":"Market Day","caption":"We bought peaches from the last stall and carried them home in the bottom of the bag.","alt":"Two ripe peaches and rumpled linen on a wooden counter","thumbnailUrl":"/content/photos/06-small.webp","imageUrl":"/content/photos/06.webp"},
+    {"id":"where-the-land-ends","anchor":"EXHIBIT_09","title":"Where the Land Ends","caption":"From the far end of the harbor, the houses looked small enough to hold in a hand.","alt":"Pastel houses above a calm Mediterranean harbor","thumbnailUrl":"/content/photos/07-small.webp","imageUrl":"/content/photos/07.webp"},
+    {"id":"the-train-home","anchor":"EXHIBIT_10","title":"The Train Home","caption":"We watched the station lights stretch into the rain as the train pulled away.","alt":"Amber lights seen through a rain-streaked train window at blue hour","thumbnailUrl":"/content/photos/08-small.webp","imageUrl":"/content/photos/08.webp"},
+    {"id":"a-slow-afternoon","anchor":"EXHIBIT_11","title":"A Slow Afternoon","caption":"We left the bicycle in the shade and sat around the corner until the sun moved across the wall.","alt":"A bicycle beside a faded terracotta wall in the shade of a tree","thumbnailUrl":"/content/photos/09-small.webp","imageUrl":"/content/photos/09.webp"},
+    {"id":"the-story","anchor":"EXHIBIT_FINALE","title":"The Story Is Still Being Written","caption":"The sun went down while we were still sitting there. There’s a letter for you here.","alt":"The sun setting over the ocean between two dark headlands","thumbnailUrl":"/content/photos/10-small.webp","imageUrl":"/content/photos/10.webp"}
+  ],
+  "finale": {
+    "exhibitId": "the-story",
+    "letterParagraphs": [
+      "Dear you,",
+      "I wanted somewhere to put the little things I remember. The extra coffee. The rain on the train window. How we always seemed to find a reason to stay a few minutes longer.",
+      "I still think about that last evening by the water. I’m looking forward to the next time we get to sit somewhere together until the light changes.",
+      "With love"
+    ]
+  }
+}

@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.museum-tools/
+.museum-preview/
+playwright-report/
+test-results/

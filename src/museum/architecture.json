@@ -1,0 +1,21 @@
+{
+  "pyramid": { "halfWidth": 5.5, "centerZ": -3, "height": 6.7, "doorHalfWidth": 1.2, "doorHeight": 2.65 },
+  "hall": {
+    "halfWidth": 5.3, "frontZ": 7, "alcoveZ": -23, "alcoveHalfWidth": 2.05, "backZ": -29,
+    "bayLines": [5, -3, -11, -19], "springHeight": 5.35,
+    "wingDoor": { "halfWidth": 1.43, "springHeight": 2.4, "rise": 0.65 },
+    "wings": [
+      {
+        "side": -1, "outerX": 10.88, "nearZ": 5.05, "farZ": -10.95, "doorZ": [2.72, -8.62],
+        "exhibits": [{ "anchor": "EXHIBIT_01", "z": 1.15 }, { "anchor": "EXHIBIT_07", "z": -6.45 }]
+      },
+      {
+        "side": 1, "outerX": 10.38, "nearZ": -6.55, "farZ": -19.3, "doorZ": [-8.92, -16.62],
+        "exhibits": [
+          { "anchor": "EXHIBIT_06", "z": -10.45 }, { "anchor": "EXHIBIT_10", "z": -14.52 },
+          { "anchor": "EXHIBIT_08", "z": -8.13, "recess": false }, { "anchor": "EXHIBIT_12", "z": -17.64, "recess": false }
+        ]
+      }
+    ]
+  }
+}
