@@ -1,13 +1,19 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import type { Collection } from '../shared/types';
+import { api } from './api/client';
+import { demoCollection } from './api/demo';
+import { useAuth } from './auth/AuthProvider';
+import { parseCollection } from './exhibits/collection';
 import { ExhibitPanel } from './exhibits/ExhibitPanel';
 import { loadManifest } from './exhibits/manifest';
-import type { Exhibit, Manifest } from './exhibits/manifest';
+import type { DisplayExhibit } from './exhibits/manifest';
 import { PhotoIndex } from './exhibits/PhotoIndex';
 import { Icon } from './Icons';
 import { Welcome } from './Welcome';
 import { gsap, useMuseumMotion } from './motion';
-import type { Room } from './museum/layout';
+import { galleryReturnPose } from './museum/layout';
+import type { Pose, Room } from './museum/layout';
 
 const loadMuseum = () => import('./museum/Museum');
 const createMuseum = () => lazy(loadMuseum);
@@ -31,26 +37,37 @@ class MuseumBoundary extends Component<{ children: ReactNode; onFailure: () => v
   render() { return this.state.failed ? null : this.props.children; }
 }
 
+const ROOM_LABELS: Record<Room, { eyebrow: string; title: string; loading: string }> = {
+  courtyard: { eyebrow: 'After closing', title: 'The Courtyard', loading: 'Opening the courtyard…' },
+  gallery: { eyebrow: 'Private collection', title: 'The Gallery of Us', loading: 'Opening the gallery…' },
+  wing: { eyebrow: 'A newer collection', title: 'The New Wing', loading: 'Opening the New Wing…' },
+};
+
 export function App() {
+  const auth = useAuth();
+  const { demo, token: getToken } = auth;
   const [Museum, setMuseum] = useState(createMuseum);
   const [view, setView] = useState<View>('welcome');
   const [room, setRoom] = useState<Room>('courtyard');
   const [ready, setReady] = useState<Room>();
   const [failed, setFailed] = useState(false);
   const [retrying, setRetrying] = useState(false);
-  const [manifest, setManifest] = useState<Manifest>();
+  const [collection, setCollection] = useState<Collection>();
   const [contentFailed, setContentFailed] = useState(false);
-  const [selection, setSelection] = useState<{ exhibit: Exhibit; letter?: boolean }>();
+  const [selection, setSelection] = useState<{ exhibit: DisplayExhibit; letter?: boolean }>();
   const [visited, setVisited] = useState(false);
   const [reset, setReset] = useState(0);
   const [doorRequest, setDoorRequest] = useState(0);
   const [atDoor, setAtDoor] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
-  const load = useRef<Promise<Manifest> | undefined>(undefined);
+  const [gallerySpawn, setGallerySpawn] = useState<Pose>();
+  const load = useRef<Promise<Collection> | undefined>(undefined);
   const returnFromPhotos = useRef<View>('welcome');
   const region = useRef<HTMLElement>(null);
   const hasLeftWelcome = useRef(false);
   const retryAttempt = useRef(0);
+  const manifest = collection?.manifest;
+  const wing = collection?.wing;
 
   function showView(value: View) {
     if (value !== 'welcome') hasLeftWelcome.current = true;
@@ -60,24 +77,39 @@ export function App() {
 
   useEffect(() => { region.current?.focus({ preventScroll: true }); }, [view]);
 
-  function getCollection() {
-    if (load.current) return;
+  const loadCollection = useCallback(() => {
+    if (load.current) return load.current;
     setContentFailed(false);
-    load.current = loadManifest();
-    void load.current.then(setManifest, () => {
+    const run = (async () => {
+      if (demo) return demoCollection(await loadManifest());
+      const token = await getToken();
+      if (!token) throw new Error('Your key has expired. Sign in again.');
+      const result = await api.collection(token);
+      return parseCollection(result.collection);
+    })();
+    load.current = run;
+    void run.then((next) => setCollection(next), () => {
       load.current = undefined;
       setContentFailed(true);
     });
+    return run;
+  }, [demo, getToken]);
+
+  useEffect(() => { void loadCollection(); }, [loadCollection]);
+
+  function retryCollection() {
+    load.current = undefined;
+    void loadCollection();
   }
 
   function browse() {
     if (view !== 'photos') returnFromPhotos.current = view;
-    getCollection();
+    void loadCollection();
     showView('photos');
   }
 
   function start() {
-    getCollection();
+    void loadCollection();
     setFailed(false);
     setVisited(true);
     showView('museum');
@@ -92,6 +124,7 @@ export function App() {
     setRoom('courtyard');
     setAtDoor(false);
     setUnlocking(false);
+    setGallerySpawn(undefined);
     showView('welcome');
   }
 
@@ -114,15 +147,26 @@ export function App() {
     }
   }
 
-  const openExhibit = useCallback((exhibit: Exhibit, letter?: boolean) => setSelection({ exhibit, letter }), []);
+  const openExhibit = useCallback((exhibit: DisplayExhibit, letter?: boolean) => setSelection({ exhibit, letter }), []);
   const unlockDoor = useCallback(() => setUnlocking(true), []);
   const enterGallery = useCallback(() => {
+    setGallerySpawn(undefined);
     setRoom('gallery');
     setAtDoor(false);
     setUnlocking(false);
   }, []);
+  const enterWing = useCallback(() => {
+    setRoom('wing');
+    setReady(undefined);
+  }, []);
+  const leaveWing = useCallback(() => {
+    setGallerySpawn(galleryReturnPose);
+    setRoom('gallery');
+    setReady(undefined);
+  }, []);
   const failWalkthrough = useCallback(() => { setFailed(true); setReady(undefined); setVisited(false); setUnlocking(false); }, []);
   const loading = !failed && ready !== room;
+  const roomLabel = ROOM_LABELS[room];
 
   return (
     <div className={`app app--${view}`}>
@@ -131,14 +175,17 @@ export function App() {
         <button className="wordmark" onClick={welcome} aria-label="Our Little Louvre, welcome">
           <img src="/pyramid.svg" alt="" width="35" height="35" /> <span>Our Little Louvre</span>
         </button>
-        {view === 'photos' ? <button className="masthead-link" onClick={() => showView(returnFromPhotos.current)}><Icon name="back" /> {returnFromPhotos.current === 'museum' ? 'Back to museum' : 'Back to invitation'}</button>
-          : <button className="masthead-link" onClick={browse}><Icon name="collection" /> Browse photos</button>}
+        <nav className="masthead-actions" aria-label="Museum">
+          {view === 'photos' ? <button className="masthead-link" onClick={() => showView(returnFromPhotos.current)}><Icon name="back" /> {returnFromPhotos.current === 'museum' ? 'Back to museum' : 'Back to invitation'}</button>
+            : <button className="masthead-link" onClick={browse}><Icon name="collection" /> Browse photos</button>}
+          {!auth.demo && <a className="masthead-link masthead-link--quiet" href="/studio">Private studio</a>}
+        </nav>
       </header>}
       {view === 'welcome' && <Welcome focusRegion={region} animateEntrance={!hasLeftWelcome.current} onStart={start} onBrowse={browse} />}
       {view === 'photos' && (
         <div className="photo-shell" ref={region as React.RefObject<HTMLDivElement>} tabIndex={-1}>
-          {manifest ? <PhotoIndex manifest={manifest} onOpen={openExhibit} /> : <main id="main-content" className="center-state">
-            {contentFailed ? <><h1>The photos couldn’t load</h1><button className="button button--gold" onClick={getCollection}>Try again</button></> : <p role="status">Opening the collection…</p>}
+          {manifest && collection ? <PhotoIndex manifest={manifest} wing={wing} onOpen={openExhibit} /> : <main id="main-content" className="center-state">
+            {contentFailed ? <><h1>The photos couldn’t load</h1><button className="button button--gold" onClick={retryCollection}>Try again</button></> : <p role="status">Opening the collection…</p>}
           </main>}
         </div>
       )}
@@ -146,12 +193,12 @@ export function App() {
         <main className="walkthrough" id={view === 'museum' ? 'main-content' : undefined} ref={view === 'museum' ? region : undefined} tabIndex={-1} hidden={view !== 'museum'}>
           {visited && !failed && <MuseumBoundary onFailure={failWalkthrough}>
             <Suspense fallback={null}>
-              <Museum room={room} manifest={manifest} active={view === 'museum' && !selection && !loading && !unlocking} visible={view === 'museum'} reset={reset}
+              <Museum room={room} manifest={manifest} wing={wing} spawn={gallerySpawn} active={view === 'museum' && !selection && !loading && !unlocking} visible={view === 'museum'} reset={reset}
                 doorRequest={doorRequest} unlocking={unlocking} onDoorProximity={setAtDoor} onUnlock={unlockDoor}
                 onReady={setReady} onDoorOpened={enterGallery} onOpen={openExhibit} onFailure={failWalkthrough} />
             </Suspense>
           </MuseumBoundary>}
-          {loading && <div className="walkthrough-state" role="status"><span className="loading-ring" />{room === 'courtyard' ? 'Opening the courtyard…' : 'Opening the gallery…'}</div>}
+          {loading && <div className="walkthrough-state" role="status"><span className="loading-ring" />{roomLabel.loading}</div>}
           {failed && <div className="walkthrough-state">
             <h1>The walkthrough is unavailable</h1>
             <div className="button-row walkthrough-recovery">
@@ -161,16 +208,22 @@ export function App() {
           </div>}
           {!loading && !failed && <>
             <RoomReveal key={room} />
-            <div className="scene-caption"><p className="eyebrow">{room === 'courtyard' ? 'After closing' : 'Private collection'}</p><h1>{room === 'courtyard' ? 'The Courtyard' : 'The Gallery of Us'}</h1></div>
+            <div className="scene-caption"><p className="eyebrow">{roomLabel.eyebrow}</p><h1>{roomLabel.title}</h1></div>
             <div className="scene-actions">
               <button className="button button--glass reset-view" type="button" aria-label="Reset view" disabled={unlocking} onClick={() => setReset((current) => current + 1)}><Icon name="reset" size={17} /><span>Reset view</span></button>
               {room === 'courtyard' && <button className="button button--gold" type="button" disabled={unlocking}
                 onClick={atDoor ? unlockDoor : () => setDoorRequest((current) => current + 1)}>
                 <Icon name="key" />{unlocking ? 'Unlocking…' : atDoor ? 'Use brass key' : 'Go to pyramid door'}
               </button>}
+              {room === 'gallery' && <button className="button button--gold" type="button" onClick={enterWing}>
+                <Icon name="collection" /> {wing?.total ? `Visit the New Wing (${wing.total})` : 'Visit the New Wing'}
+              </button>}
+              {room === 'wing' && <button className="button button--gold" type="button" onClick={leaveWing}>
+                <Icon name="back" /> Back to the gallery
+              </button>}
             </div>
             {room === 'courtyard' && atDoor && !unlocking && <p className="door-prompt">Press <kbd>E</kbd> or select Use brass key.</p>}
-            {room === 'gallery' && contentFailed && <aside className="content-error">The exhibits couldn’t load. <button onClick={getCollection}>Try again</button></aside>}
+            {(room === 'gallery' || room === 'wing') && contentFailed && <aside className="content-error">The exhibits couldn’t load. <button onClick={retryCollection}>Try again</button></aside>}
           </>}
         </main>
       )}

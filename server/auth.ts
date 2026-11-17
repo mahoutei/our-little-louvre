@@ -1,0 +1,68 @@
+import type { Member } from '@prisma/client';
+import type { MiddlewareHandler } from 'hono';
+import { ApiError } from './http';
+import { env, guestListReady, isAllowedEmail, nameFor, roleFor, serverReady } from './env';
+import { prisma } from './prisma';
+import { supabaseAdmin } from './supabase';
+
+export type AppBindings = {
+  Variables: {
+    member: Member;
+  };
+};
+
+export const requireMember: MiddlewareHandler<AppBindings> = async (c, next) => {
+  if (!serverReady()) throw new ApiError(503, 'The museum backend is not configured yet.');
+  if (!guestListReady()) throw new ApiError(503, 'The guest list is empty. Add OWNER_EMAIL and PARTNER_EMAIL.');
+
+  const header = c.req.header('Authorization') ?? '';
+  const token = header.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
+  if (!token) throw new ApiError(401, 'Sign in to enter the museum.');
+
+  const { data, error } = await supabaseAdmin().auth.getUser(token);
+  const email = data.user?.email?.trim().toLowerCase();
+  if (error || !data.user || !email) throw new ApiError(401, 'Your key has expired. Sign in again.');
+
+  let member = await prisma.member.findUnique({ where: { authId: data.user.id } });
+  if (!member) {
+    const byEmail = await prisma.member.findUnique({ where: { email } });
+    if (byEmail) {
+      member = await prisma.member.update({ where: { id: byEmail.id }, data: { authId: data.user.id } });
+    } else if (isAllowedEmail(email)) {
+      member = await prisma.member.create({
+        data: {
+          authId: data.user.id,
+          email,
+          name: nameFor(email),
+          role: roleFor(email),
+        },
+      });
+    }
+  }
+
+  if (!member) throw new ApiError(403, 'This museum is kept for two people.');
+  // Changing the guest list must revoke existing sessions as well as block new ones.
+  if (!isAllowedEmail(member.email)) throw new ApiError(403, 'This museum is kept for two people.');
+  c.set('member', member);
+  await next();
+};
+
+export function allowedEmailResult(email: string) {
+  const normalized = email.trim().toLowerCase();
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
+  return {
+    allowed: valid && guestListReady() && isAllowedEmail(normalized),
+    configured: guestListReady(),
+  };
+}
+
+export function memberView(member: Member) {
+  return {
+    id: member.id,
+    name: member.name,
+    email: member.email,
+    role: member.role,
+  };
+}
+
+export const museumName = env.museumName;

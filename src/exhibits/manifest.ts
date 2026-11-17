@@ -1,18 +1,8 @@
-export type Exhibit = {
-  id: string;
-  anchor: string;
-  title: string;
-  caption: string;
-  alt: string;
-  thumbnailUrl: string;
-  imageUrl: string;
-  dateLabel?: string;
-};
+import type { ExhibitBase, Manifest } from '../../shared/types';
 
-export type Manifest = {
-  exhibits: Exhibit[];
-  finale: { exhibitId: string; letterParagraphs: string[] };
-};
+export type DisplayExhibit = ExhibitBase & { anchor?: string };
+export type Exhibit = DisplayExhibit & { anchor: string };
+export type { Manifest };
 
 const record = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Expected an exhibit record.');
@@ -21,7 +11,7 @@ const record = (value: unknown): Record<string, unknown> => {
 
 const requiredText = (value: unknown, field: string): string => {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`Missing ${field}.`);
-  return value;
+  return value.trim();
 };
 
 const imagePath = (value: unknown, field: string) => {
@@ -40,11 +30,19 @@ export function parseManifest(data: unknown): Manifest {
   }
   const exhibits = manifest.exhibits.map((item): Exhibit => {
     const { id, anchor, title, caption, alt, thumbnailUrl, imageUrl, dateLabel } = record(item);
+    const exhibitId = requiredText(id, 'exhibit ID');
     return {
-      id: requiredText(id, 'exhibit ID'), anchor: requiredText(anchor, 'anchor'),
-      title: requiredText(title, 'title'), caption: requiredText(caption, 'caption'), alt: requiredText(alt, 'alt text'),
-      thumbnailUrl: imagePath(thumbnailUrl, 'thumbnail'), imageUrl: imagePath(imageUrl, 'close-up'),
-      dateLabel: dateLabel === undefined ? undefined : requiredText(dateLabel, 'date'),
+      id: exhibitId,
+      slug: exhibitId,
+      origin: 'ORIGINAL',
+      anchor: requiredText(anchor, 'anchor'),
+      title: requiredText(title, 'title'),
+      caption: requiredText(caption, 'caption'),
+      alt: requiredText(alt, 'alt text'),
+      thumbnailUrl: imagePath(thumbnailUrl, 'thumbnail'),
+      imageUrl: imagePath(imageUrl, 'close-up'),
+      published: true,
+      ...(dateLabel === undefined ? {} : { dateLabel: requiredText(dateLabel, 'date') }),
     };
   });
   if (new Set(exhibits.map(({ id }) => id)).size !== exhibits.length) throw new Error('Duplicate exhibit ID.');

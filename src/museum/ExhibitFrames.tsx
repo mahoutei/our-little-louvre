@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useGLTF } from '@react-three/drei';
 import { BufferGeometry, Color, Float32BufferAttribute, Quaternion, SRGBColorSpace, Texture, TextureLoader, Vector3 } from 'three';
 import type { Ray } from 'three';
-import type { Exhibit, Manifest } from '../exhibits/manifest';
+import type { DisplayExhibit, Manifest } from '../exhibits/manifest';
 import { AimLight, modelUrl } from './Scenery';
 
-export type FramePlacement = { exhibit: Exhibit; position: Vector3; orientation: Quaternion; finale: boolean };
+export type FramePlacement = { exhibit: DisplayExhibit; position: Vector3; orientation: Quaternion; finale: boolean };
 
 export function useFramePlacements(manifest: Manifest | undefined): FramePlacement[] {
   const { scene } = useGLTF(modelUrl('gallery'), false);
@@ -100,11 +100,12 @@ function PictureLight({ edge, finale }: { edge: number; finale: boolean }) {
   </>;
 }
 
-export function ExhibitFrame({ placement, onInspect, enabled }: {
-  placement: FramePlacement; onInspect: (exhibit: Exhibit) => void; enabled: (ray: Ray, point: Vector3) => boolean;
+export function ExhibitFrame({ placement, onInspect, enabled, size: customSize, lit = true }: {
+  placement: FramePlacement; onInspect: (exhibit: DisplayExhibit) => void; enabled: (ray: Ray, point: Vector3) => boolean;
+  size?: number; lit?: boolean;
 }) {
   const { exhibit, position, orientation, finale } = placement;
-  const size = finale ? 2.38 : 1.66;
+  const size = customSize ?? (finale ? 2.38 : 1.66);
   const edge = size / 2;
   const frameWidth = finale ? 0.16 : 0.106;
   const molding = useMemo(() => frameMolding(edge, frameWidth), [edge, frameWidth]);
@@ -119,6 +120,6 @@ export function ExhibitFrame({ placement, onInspect, enabled }: {
     <PhotoSurface key={exhibit.thumbnailUrl} url={exhibit.thumbnailUrl} size={size - frameWidth * 3.25} />
     <mesh geometry={molding}><meshStandardMaterial vertexColors roughness={0.41} metalness={0.41} /></mesh>
     <mesh position={[0, -edge - 0.22, 0.004]}><boxGeometry args={[0.41, 0.12, 0.032]} /><meshStandardMaterial color="#9c805b" metalness={0.27} roughness={0.55} /></mesh>
-    <PictureLight edge={edge} finale={finale} />
+    {lit && <PictureLight edge={edge} finale={finale} />}
   </group>;
 }

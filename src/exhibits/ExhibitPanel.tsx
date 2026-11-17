@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../Icons';
 import { gsap, useMuseumMotion } from '../motion';
-import type { Exhibit } from './manifest';
+import type { DisplayExhibit } from './manifest';
 
-type Props = { exhibit: Exhibit; letter?: string[]; startWithLetter?: boolean; onClose: () => void };
+type Props = { exhibit: DisplayExhibit; letter?: string[]; startWithLetter?: boolean; onClose: () => void };
 
 export function ExhibitPanel({ exhibit, letter, startWithLetter, onClose }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
