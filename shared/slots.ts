@@ -38,8 +38,10 @@ export function nextWingSlot(exhibits: readonly OccupiedSlot[], capacity: number
   const occupied = occupiedSet(exhibits);
   const highest = highestAlley(exhibits);
   const lastNewAlley = Math.min(highest + 1, maxAlleys - 1);
+  // Existing alleys stay usable even if the growth limit was lowered later.
+  const lastSearchedAlley = Math.max(highest, lastNewAlley);
 
-  for (let alleyIndex = 0; alleyIndex <= lastNewAlley; alleyIndex++) {
+  for (let alleyIndex = 0; alleyIndex <= lastSearchedAlley; alleyIndex++) {
     for (let slotIndex = 0; slotIndex < capacity; slotIndex++) {
       if (occupied.has(key(alleyIndex, slotIndex))) continue;
       return { alleyIndex, slotIndex, newAlley: alleyIndex > highest };

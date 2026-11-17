@@ -50,10 +50,11 @@ export function parseManifest(data: unknown): Manifest {
 
   const finale = record(manifest.finale);
   const exhibitId = requiredText(finale.exhibitId, 'finale ID');
+  const letterTitle = finale.letterTitle === undefined ? 'A Letter for You' : requiredText(finale.letterTitle, 'letter title');
   if (!exhibits.some(({ id }) => id === exhibitId)) throw new Error('The finale exhibit does not exist.');
   if (!Array.isArray(finale.letterParagraphs) || !finale.letterParagraphs.length) throw new Error('The finale letter is empty.');
   const letterParagraphs = finale.letterParagraphs.map((value) => requiredText(value, 'letter paragraph'));
-  return { exhibits, finale: { exhibitId, letterParagraphs } };
+  return { exhibits, finale: { exhibitId, letterTitle, letterParagraphs } };
 }
 
 export async function loadManifest(): Promise<Manifest> {

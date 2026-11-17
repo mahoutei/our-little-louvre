@@ -54,7 +54,6 @@ async function request<T>(path: string, { token, method = 'GET', body }: Request
 }
 
 export const api = {
-  health: () => request<{ ok: boolean; configured: boolean; guestList: boolean }>('/health'),
   allowed: (email: string) =>
     request<{ allowed: boolean; configured: boolean }>(`/auth/allowed?email=${encodeURIComponent(email)}`),
   me: (token: string) => request<SessionView>('/me', { token }),

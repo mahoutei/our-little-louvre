@@ -31,6 +31,15 @@ describe('New Wing slots', () => {
     expect(() => nextWingSlot(exhibits, 6, 2)).toThrow(WingFullError);
   });
 
+  it('fills a gap in an existing alley even after the growth limit is lowered', () => {
+    const exhibits = [
+      slot(0, 0), slot(0, 1), slot(0, 2),
+      slot(1, 0), slot(1, 1), slot(1, 2),
+      slot(2, 0), slot(2, 2),
+    ];
+    expect(nextWingSlot(exhibits, 3, 2)).toEqual({ alleyIndex: 2, slotIndex: 1, newAlley: false });
+  });
+
   it('rejects an invalid capacity', () => {
     expect(() => nextWingSlot([], 0, 24)).toThrow(/capacity/i);
   });

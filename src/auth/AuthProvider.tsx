@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import type { MemberView } from '../../shared/types';
+import { safeReturnTo } from '../../shared/validation';
 import { api, ApiError } from '../api/client';
 import { demoMember } from '../api/demo';
 import { RETURN_TO_KEY, demoMode, supabase, supabaseConfigured } from './supabase';
@@ -130,8 +131,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!allowed.configured) throw new Error('The guest list has not been set up yet. Add OWNER_EMAIL and PARTNER_EMAIL.');
     if (!allowed.allowed) return 'not-allowed';
 
-    const returnTo = `${window.location.pathname}${window.location.search}`;
-    if (returnTo && returnTo !== '/auth/callback') localStorage.setItem(RETURN_TO_KEY, returnTo);
+    const returnTo = safeReturnTo(`${window.location.pathname}${window.location.search}`);
+    if (returnTo !== '/auth/callback') localStorage.setItem(RETURN_TO_KEY, returnTo);
 
     const { error } = await supabase.auth.signInWithOtp({
       email: normalized,

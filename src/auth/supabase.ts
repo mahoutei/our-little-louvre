@@ -17,7 +17,3 @@ export const supabase = !demoMode && url && key
   : null;
 
 export const RETURN_TO_KEY = 'louvre.returnTo';
-
-export function callbackUrl(): string {
-  return `${window.location.origin}/auth/callback`;
-}

@@ -79,5 +79,3 @@ export function memberView(member: Member) {
     role: member.role,
   };
 }
-
-export const museumName = env.museumName;

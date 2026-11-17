@@ -12,7 +12,6 @@ export const WING = {
   frameHeight: 1.74,
   frameSpacing: 3.1,
   wallThickness: 0.26,
-  capacity: 6,
   maxAlleys: 24,
 } as const;
 
@@ -69,12 +68,4 @@ export function wingWalls(alleyCount: number): Wall[] {
     }
   }
   return walls;
-}
-
-export function wingLayout(alleyCount: number) {
-  return {
-    alleyCount: Math.max(1, Math.min(WING.maxAlleys, Math.floor(alleyCount) || 1)),
-    spawn: wingSpawn(),
-    walls: wingWalls(alleyCount),
-  };
 }

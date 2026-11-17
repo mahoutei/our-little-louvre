@@ -131,7 +131,7 @@ export async function buildCollection(
     member: memberView(member),
     manifest: {
       exhibits: originals.map((exhibit) => originalView(exhibit, urls)),
-      finale: { exhibitId: finale.id, letterParagraphs: letter.paragraphs },
+      finale: { exhibitId: finale.id, letterTitle: letter.title, letterParagraphs: letter.paragraphs },
     },
     wing: { capacity: env.alleyCapacity, alleys, total: wing.length },
   };

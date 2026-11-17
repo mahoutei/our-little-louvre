@@ -139,10 +139,10 @@ function UploadForm({ busy, onSubmit }: {
           <strong>Drop a photograph here</strong>
           <span>or choose one from your phone or computer</span>
         </div>}
-      <label className="button button--outline studio-file-button">
+      <button type="button" className="button button--outline studio-file-button" onClick={() => input.current?.click()}>
         {preview ? 'Choose another' : 'Choose a photograph'}
-        <input ref={input} type="file" accept="image/*" hidden onChange={(event: ChangeEvent<HTMLInputElement>) => void choose(event.target.files?.[0])} />
-      </label>
+      </button>
+      <input ref={input} type="file" accept="image/*" hidden onChange={(event: ChangeEvent<HTMLInputElement>) => void choose(event.target.files?.[0])} />
     </div>
     {preparing && <p className="studio-hint" role="status">Preparing the photograph…</p>}
     {prepared && <p className="studio-hint studio-ready"><Icon name="key" size={15} /> Ready · {prepared.width} × {prepared.height} · {describeBytes(prepared.bytes)}</p>}
@@ -341,6 +341,9 @@ export function Studio() {
       const full = issued.files.find((file) => file.kind === 'full');
       const thumb = issued.files.find((file) => file.kind === 'thumb');
       if (!full || !thumb) throw new Error('The upload was not prepared completely. Try again.');
+      // From here on the API owns these files. A late 5xx must not delete a
+      // photograph that was already hung.
+      paths = [];
       const result = await api.createExhibit(token, {
         ...input.fields,
         imagePath: full.path,
@@ -348,7 +351,6 @@ export function Studio() {
         width: input.prepared.width,
         height: input.prepared.height,
       });
-      paths = [];
       const collection = parseCollection(result.collection);
       applyCollection(collection);
       input.reset();

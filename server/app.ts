@@ -158,7 +158,13 @@ app.post('/exhibits', async (c) => {
     throw error;
   }
 
-  await verifyUploaded(member.authId, image.path, thumb.path);
+  // Nothing is attached yet; clear a partial upload before returning the error.
+  try {
+    await verifyUploaded(member.authId, image.path, thumb.path);
+  } catch (error) {
+    await removeStoragePaths([image.path, thumb.path]);
+    throw error;
+  }
 
   let createdSlot: WingSlot;
   try {

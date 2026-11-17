@@ -3,9 +3,9 @@ import { Icon } from '../Icons';
 import { gsap, useMuseumMotion } from '../motion';
 import type { DisplayExhibit } from './manifest';
 
-type Props = { exhibit: DisplayExhibit; letter?: string[]; startWithLetter?: boolean; onClose: () => void };
+type Props = { exhibit: DisplayExhibit; letter?: string[]; letterTitle?: string; startWithLetter?: boolean; onClose: () => void };
 
-export function ExhibitPanel({ exhibit, letter, startWithLetter, onClose }: Props) {
+export function ExhibitPanel({ exhibit, letter, letterTitle, startWithLetter, onClose }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const title = useRef<HTMLHeadingElement>(null);
@@ -43,7 +43,7 @@ export function ExhibitPanel({ exhibit, letter, startWithLetter, onClose }: Prop
         {showLetter && letter ? (
           <div className="letter-body">
             <Icon name="letter" size={30} />
-            <h2 id="exhibit-title" ref={title} tabIndex={-1}>A Letter for You</h2>
+            <h2 id="exhibit-title" ref={title} tabIndex={-1}>{letterTitle ?? 'A Letter for You'}</h2>
             {letter.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
             <button className="button button--outline" onClick={() => setShowLetter(false)}><Icon name="back" /> Back to photograph</button>
           </div>

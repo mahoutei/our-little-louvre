@@ -228,7 +228,8 @@ export function App() {
         </main>
       )}
       {selection && <ExhibitPanel key={selection.exhibit.id} exhibit={selection.exhibit} startWithLetter={selection.letter} onClose={() => setSelection(undefined)}
-        letter={selection.exhibit.id === manifest?.finale.exhibitId ? manifest.finale.letterParagraphs : undefined} />}
+        letter={selection.exhibit.id === manifest?.finale.exhibitId ? manifest.finale.letterParagraphs : undefined}
+        letterTitle={manifest?.finale.letterTitle} />}
     </div>
   );
 }

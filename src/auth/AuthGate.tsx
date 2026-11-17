@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
+import { safeReturnTo } from '../../shared/validation';
 import { Icon } from '../Icons';
 import { useAuth } from './AuthProvider';
 import { RETURN_TO_KEY, supabaseConfigured } from './supabase';
@@ -91,9 +92,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!auth.member || auth.pauseMessage || window.location.pathname !== '/auth/callback') return;
-    const returnTo = localStorage.getItem(RETURN_TO_KEY) || '/';
+    const returnTo = safeReturnTo(localStorage.getItem(RETURN_TO_KEY));
     localStorage.removeItem(RETURN_TO_KEY);
-    window.location.replace(returnTo.startsWith('/') ? returnTo : '/');
+    window.location.replace(returnTo);
   }, [auth.member, auth.pauseMessage]);
 
   useEffect(() => {

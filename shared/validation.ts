@@ -41,11 +41,13 @@ export function fieldsFrom(input: Partial<ExhibitFields>): ExhibitFields {
   };
 }
 
-export function isHttpUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' || url.protocol === 'http:';
-  } catch {
-    return false;
+/**
+ * Keeps a post-sign-in redirect on this site. `//host` and `/\host` are
+ * protocol-relative URLs, and browsers strip control characters before parsing.
+ */
+export function safeReturnTo(value?: string | null): string {
+  if (!value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\') || /[\u0000-\u001f]/.test(value)) {
+    return '/';
   }
+  return value;
 }

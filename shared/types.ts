@@ -28,7 +28,7 @@ export type WingExhibit = ExhibitBase & {
 
 export type Manifest = {
   exhibits: Exhibit[];
-  finale: { exhibitId: string; letterParagraphs: string[] };
+  finale: { exhibitId: string; letterTitle: string; letterParagraphs: string[] };
 };
 
 export type WingAlley = {

@@ -31,8 +31,10 @@ export const env = {
   partnerPaused: flags('PARTNER_PAUSED'),
   partnerPausedMessage: text('PARTNER_PAUSED_MESSAGE') || DEFAULT_PARTNER_PAUSE_MESSAGE,
   museumName: text('MUSEUM_NAME') || 'Our Little Louvre',
-  alleyCapacity: integer('WING_ALLEY_CAPACITY', DEFAULT_ALLEY_CAPACITY),
-  maxAlleys: integer('WING_MAX_ALLEYS', DEFAULT_MAX_ALLEYS),
+  // The procedural wing is built for at most six frames and 24 alleys; the
+  // environment can lower these, not raise them.
+  alleyCapacity: Math.min(DEFAULT_ALLEY_CAPACITY, integer('WING_ALLEY_CAPACITY', DEFAULT_ALLEY_CAPACITY)),
+  maxAlleys: Math.min(DEFAULT_MAX_ALLEYS, integer('WING_MAX_ALLEYS', DEFAULT_MAX_ALLEYS)),
 };
 
 export function serverReady(): boolean {
