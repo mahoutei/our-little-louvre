@@ -121,6 +121,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [refreshMember]);
 
+  useEffect(() => {
+    if (demoMode || !session) return;
+    const timer = window.setInterval(() => {
+      void api.me(session.access_token)
+        .then((result) => {
+          setMember(result.member);
+          setPauseMessage(result.pause?.message ?? null);
+        })
+        // A background check must not close an open museum on a network blip.
+        .catch(() => {});
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [session]);
+
   const signIn = useCallback(async (email: string): Promise<'sent' | 'not-allowed'> => {
     if (!supabase) throw new Error('The private entrance is not configured yet.');
     const normalized = email.trim().toLowerCase();

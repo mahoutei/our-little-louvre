@@ -1,3 +1,4 @@
+import { MAX_FRAMES_PER_ALLEY } from '../../shared/config';
 import type { Collection, Role, WingAlley, WingExhibit } from '../../shared/types';
 import { parseManifest } from './manifest';
 
@@ -30,7 +31,7 @@ const displayUrl = (value: unknown, field: string): string => {
   return url;
 };
 
-function wingExhibit(value: unknown, alleyIndex: number, capacity: number, seen: Set<string>): WingExhibit {
+function wingExhibit(value: unknown, alleyIndex: number, seen: Set<string>): WingExhibit {
   const item = record(value, 'wing exhibit');
   const id = text(item.id, 'exhibit ID');
   if (seen.has(id)) throw new Error('Duplicate exhibit ID.');
@@ -38,7 +39,7 @@ function wingExhibit(value: unknown, alleyIndex: number, capacity: number, seen:
   if (item.origin !== 'WING') throw new Error('The New Wing contains a non-wing exhibit.');
   if (typeof item.published !== 'boolean') throw new Error('Missing exhibit visibility.');
   const slotIndex = Number(item.slotIndex);
-  if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= capacity) throw new Error('Invalid frame slot.');
+  if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= MAX_FRAMES_PER_ALLEY) throw new Error('Invalid frame slot.');
   if (Number(item.alleyIndex) !== alleyIndex) throw new Error('The exhibit is in the wrong alley.');
   return {
     id,
@@ -70,7 +71,7 @@ export function parseCollection(data: unknown): Collection {
 
   const wing = record(root.wing, 'wing');
   const capacity = Number(wing.capacity);
-  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 24) throw new Error('Invalid alley capacity.');
+  if (!Number.isInteger(capacity) || capacity < 1 || capacity > MAX_FRAMES_PER_ALLEY) throw new Error('Invalid alley capacity.');
   if (!Array.isArray(wing.alleys)) throw new Error('Missing New Wing alleys.');
 
   const seen = new Set(manifest.exhibits.map(({ id }) => id));
@@ -83,11 +84,15 @@ export function parseCollection(data: unknown): Collection {
     if (indexes.has(index)) throw new Error('Duplicate alley number.');
     indexes.add(index);
     if (!Array.isArray(alley.exhibits)) throw new Error('Missing alley exhibits.');
-    const exhibits = alley.exhibits.map((exhibit) => wingExhibit(exhibit, index, capacity, seen));
+    const remaining = Number(alley.remaining);
+    if (!Number.isInteger(remaining) || remaining < 0 || remaining > capacity) {
+      throw new Error('Invalid free frame count.');
+    }
+    const exhibits = alley.exhibits.map((exhibit) => wingExhibit(exhibit, index, seen));
     if (new Set(exhibits.map(({ slotIndex }) => slotIndex)).size !== exhibits.length) {
       throw new Error('Two exhibits share a frame.');
     }
-    alleys.push({ index, exhibits });
+    alleys.push({ index, remaining, exhibits });
   }
   alleys.sort((a, b) => a.index - b.index);
 

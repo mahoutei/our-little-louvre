@@ -44,6 +44,8 @@ You will need Node 22 LTS or newer and a [Supabase](https://supabase.com) projec
    npm.cmd run setup:supabase
    ```
 
+   The script exits nonzero and names the failed step if it cannot refresh the bucket or harden a table, so do not continue until it finishes cleanly.
+
 4. Create the tables and seed the original collection.
 
    ```powershell
@@ -83,7 +85,9 @@ For a private starting draft, create `prisma/letter.json` before the first `db:s
 }
 ```
 
-`prisma/letter.json` is gitignored. If it is absent, the seed uses a short sample letter. After the first seed, the database is the source of truth, so re-running the seed will not replace a letter written in the studio.
+`prisma/letter.json` is gitignored. If it is absent, the seed uses a short sample letter. Any other error reading the file stops the seed instead of silently replacing your draft. After the first seed, the database is the source of truth, so re-running the seed will not replace a letter written in the studio.
+
+Saves are versioned. If the other person saved the letter after you opened it, your save is refused, the latest letter is loaded, and the studio asks you to make your changes again. The first save is never overwritten.
 
 ## The studio
 
@@ -92,7 +96,7 @@ The masthead’s **Private studio** link opens `/studio`. Both members have the 
 - **Hang a memory** — choose or drop a photograph. The browser rotates, downsizes, and re-encodes it, then uploads the display copy and thumbnail directly to the private bucket through one-use signed URLs. The API verifies the upload before creating the exhibit.
 - **The letter** — edit the title and up to twelve paragraphs. The saved letter replaces the final exhibit’s letter for both of you.
 - **Name on the label** — set the name shown on the labels you hang.
-- **The New Wing** — edit a photograph’s title, date, story, and description; hide it from the museum without deleting it; or remove it and free its frame.
+- **The New Wing** — edit a photograph’s title, date, story, and description; hide it from the museum without deleting it; or remove it and free its frame. A hidden photograph keeps its frame, but its label and image are not sent to the museum.
 - **The Gallery of Us** — edit the labels of the ten baked originals.
 
 ### Keeping the surprise
@@ -107,6 +111,8 @@ PARTNER_PAUSED_MESSAGE="Dean is cooking something"
 With the flag on, the partner’s sign-in still succeeds, but the museum and studio routes answer `423` and the browser shows a neutral cover page with the configured message. The owner is never paused. The page deliberately has no museum name, no logo, no photographs, and no canvas, so an early visit does not reveal the project; its document title is the message itself.
 
 Set `PARTNER_PAUSED=1` in `.env.local` for local work, and in the hosting environment for production. Either way the API reads the value at startup, so restart `npm run dev` (or redeploy) after changing it. Remove the flag, or set it to `0`, to reopen the partner’s side. `PARTNER_PAUSED_MESSAGE` defaults to `Dean is cooking something`.
+
+A signed-in partner’s browser checks `/api/me` once a minute, so turning the pause on or off reaches an open tab within a minute without a reload.
 
 Nothing you add is readable without a session: the museum, the photo index, the collection API, the studio API, the database tables, and the uploaded photographs are all private. The ten baked demo photographs and the sample manifest in `public/content` are served as static preview files, so keep only fictional demo material there. The real letter and every uploaded photograph live in Supabase behind the API.
 
@@ -138,6 +144,8 @@ The repository includes `vercel.json` and a serverless Hono entry point at `api/
    Run `npm.cmd run setup:supabase` once as well if the bucket and table permissions have not been created for this project.
 4. In Supabase → **Authentication** → **URL Configuration**, set the **Site URL** to your production address and add `https://your-domain/auth/callback` to the **Redirect URLs**.
 5. Deploy. Visit `/studio` and sign in with one of the two guest addresses to confirm the production redirect works.
+
+6. After both of you have signed in once, close public sign-ups in Supabase → **Authentication** → **Providers** → **Email** by turning off **Allow new users to sign up**. The museum still refuses any other address, but this step stops Supabase from creating stray accounts through the sign-in form.
 
 The browser only ever receives `VITE_*` values. The Prisma connection strings and `SUPABASE_SECRET_KEY` stay on the serverless functions. Display URLs are signed for six hours, so a reload always asks the API for fresh ones.
 

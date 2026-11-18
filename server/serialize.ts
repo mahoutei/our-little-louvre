@@ -1,5 +1,6 @@
 import type { Exhibit as DbExhibit, Letter } from '@prisma/client';
 import { STORAGE_BUCKET } from '../shared/config';
+import { groupWingRows } from '../shared/slots';
 import type {
   Collection,
   Exhibit,
@@ -100,7 +101,7 @@ export async function buildCollection(
       include: { author: { select: { name: true } } },
     }),
     prisma.exhibit.findMany({
-      where: { origin: 'WING', ...(includeUnpublished ? {} : { published: true }) },
+      where: { origin: 'WING' },
       orderBy: [{ alleyIndex: 'asc' }, { slotIndex: 'asc' }],
       include: { author: { select: { name: true } } },
     }),
@@ -111,17 +112,14 @@ export async function buildCollection(
     throw new ApiError(503, 'The original collection has not been seeded yet. Run npm run db:seed.');
   }
 
-  const urls = await signedUrls(wing.flatMap((exhibit) => [exhibit.thumbPath, exhibit.imagePath]));
-  const alleys: WingAlley[] = [];
-  for (const exhibit of wing) {
-    const index = exhibit.alleyIndex ?? 0;
-    let alley = alleys.at(-1);
-    if (!alley || alley.index !== index) {
-      alley = { index, exhibits: [] };
-      alleys.push(alley);
-    }
-    alley.exhibits.push(wingView(exhibit, urls));
-  }
+  const visible = includeUnpublished ? wing : wing.filter((exhibit) => exhibit.published);
+  const urls = await signedUrls(visible.flatMap((exhibit) => [exhibit.thumbPath, exhibit.imagePath]));
+  const alleys: WingAlley[] = groupWingRows(wing, env.alleyCapacity).map(({ index, rows, remaining }) => ({
+    index,
+    remaining,
+    exhibits: rows.filter((exhibit) => includeUnpublished || exhibit.published).map((exhibit) => wingView(exhibit, urls)),
+  }));
+  const total = alleys.reduce((sum, alley) => sum + alley.exhibits.length, 0);
 
   const finale = originals.find((exhibit) => exhibit.slug === 'the-story' || exhibit.anchor === 'EXHIBIT_FINALE') ?? originals.at(-1);
   if (!finale) throw new ApiError(503, 'The original finale is missing.');
@@ -133,25 +131,14 @@ export async function buildCollection(
       exhibits: originals.map((exhibit) => originalView(exhibit, urls)),
       finale: { exhibitId: finale.id, letterTitle: letter.title, letterParagraphs: letter.paragraphs },
     },
-    wing: { capacity: env.alleyCapacity, alleys, total: wing.length },
+    wing: { capacity: env.alleyCapacity, alleys, total },
   };
 }
 
-export async function buildStudioData(member: Parameters<typeof memberView>[0]): Promise<StudioData> {
+export async function buildStudioData(member: Parameters<typeof memberView>[0]): Promise<Omit<StudioData, 'stats'>> {
   const letter = await readLetter();
   const collection = await buildCollection(member, true, letter);
-  const wingPublished = collection.wing.alleys.flatMap((alley) => alley.exhibits).filter((exhibit) => exhibit.published).length;
-  return {
-    collection,
-    letter,
-    stats: {
-      originals: collection.manifest.exhibits.length,
-      wing: collection.wing.total,
-      published: collection.manifest.exhibits.length + wingPublished,
-      alleys: collection.wing.alleys.length,
-      capacity: collection.wing.capacity,
-    },
-  };
+  return { collection, letter };
 }
 
 export async function removeStoragePaths(paths: string[]): Promise<void> {

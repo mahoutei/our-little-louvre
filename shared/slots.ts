@@ -28,6 +28,30 @@ export function highestAlley(exhibits: readonly OccupiedSlot[]): number {
   return highest;
 }
 
+export type WingRow = { alleyIndex: number | null; slotIndex: number | null };
+export type WingGroup<T extends WingRow> = { index: number; rows: T[]; remaining: number };
+
+/**
+ * Groups every wing row, including hidden ones, so the museum can show the
+ * real number of free frames without receiving a hidden photograph's details.
+ */
+export function groupWingRows<T extends WingRow>(rows: readonly T[], capacity: number): WingGroup<T>[] {
+  const groups = new Map<number, WingGroup<T>>();
+  for (const row of rows) {
+    const index = row.alleyIndex ?? 0;
+    let group = groups.get(index);
+    if (!group) {
+      group = { index, rows: [], remaining: capacity };
+      groups.set(index, group);
+    }
+    group.rows.push(row);
+    if (row.slotIndex !== null && row.slotIndex >= 0 && row.slotIndex < capacity) {
+      group.remaining = Math.max(0, group.remaining - 1);
+    }
+  }
+  return [...groups.values()].sort((a, b) => a.index - b.index);
+}
+
 /**
  * Picks the first empty frame in hanging order. Gaps left by deleted photographs
  * are filled first; when every existing frame is taken, the next alley opens.
@@ -48,13 +72,4 @@ export function nextWingSlot(exhibits: readonly OccupiedSlot[], capacity: number
     }
   }
   throw new WingFullError(maxAlleys);
-}
-
-export function remainingInAlley(exhibits: readonly OccupiedSlot[], alleyIndex: number, capacity: number): number {
-  const taken = exhibits.filter((exhibit) => exhibit.alleyIndex === alleyIndex).length;
-  return Math.max(0, capacity - taken);
-}
-
-export function alleyTotal(exhibits: readonly OccupiedSlot[], capacity: number): number {
-  return Math.max(0, highestAlley(exhibits) + 1);
 }

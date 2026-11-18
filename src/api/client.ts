@@ -58,7 +58,7 @@ export const api = {
     request<{ allowed: boolean; configured: boolean }>(`/auth/allowed?email=${encodeURIComponent(email)}`),
   me: (token: string) => request<SessionView>('/me', { token }),
   collection: (token: string) => request<{ collection: unknown }>('/collection', { token }),
-  studio: (token: string) => request<StudioData>('/studio', { token }),
+  studio: (token: string) => request<Omit<StudioData, 'stats'>>('/studio', { token }),
   updateProfile: (token: string, name: string) =>
     request<{ member: MemberView }>('/me', { token, method: 'PATCH', body: { name } }),
   createUploads: (token: string, files: { kind: 'full' | 'thumb'; contentType: string }[]) =>
@@ -75,6 +75,6 @@ export const api = {
     request<{ collection: Collection }>(`/exhibits/${encodeURIComponent(id)}`, { token, method: 'PATCH', body: patch }),
   deleteExhibit: (token: string, id: string) =>
     request<{ collection: Collection }>(`/exhibits/${encodeURIComponent(id)}`, { token, method: 'DELETE' }),
-  saveLetter: (token: string, letter: { title: string; paragraphs: string[] }) =>
+  saveLetter: (token: string, letter: { title: string; paragraphs: string[]; updatedAt: string }) =>
     request<{ letter: LetterView; collection: Collection }>('/letter', { token, method: 'PUT', body: letter }),
 };

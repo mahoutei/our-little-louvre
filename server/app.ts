@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
-import { STORAGE_BUCKET, UPLOAD_IMAGE_TYPES } from '../shared/config';
+import { LIMITS, STORAGE_BUCKET, UPLOAD_IMAGE_TYPES } from '../shared/config';
 import { nextWingSlot, WingFullError } from '../shared/slots';
 import type { ExhibitPatch, NewExhibitInput, WingSlot } from '../shared/types';
 import { fieldsFrom, tidyCaption, validateExhibitFields } from '../shared/validation';
 import { allowedEmailResult, memberView, pauseMessageFor, requireMember, requireOpenMuseum, type AppBindings } from './auth';
-import { env, guestListReady, serverReady } from './env';
+import { env } from './env';
 import { ApiError, readJson } from './http';
 import { prisma } from './prisma';
 import { buildCollection, buildStudioData, readLetter, removeStoragePaths } from './serialize';
@@ -55,8 +55,6 @@ function fieldsOrThrow(input: Partial<NewExhibitInput>) {
   if (Object.keys(errors).length) throw new ApiError(400, 'Check the photograph details.', errors);
   return fields;
 }
-
-app.get('/health', (c) => c.json({ ok: true, configured: serverReady(), guestList: guestListReady() }));
 
 app.get('/auth/allowed', (c) => c.json(allowedEmailResult(c.req.query('email') ?? '')));
 
@@ -176,7 +174,12 @@ app.post('/exhibits', async (c) => {
         select: { alleyIndex: true, slotIndex: true },
       });
       const target = nextWingSlot(existing, env.alleyCapacity, env.maxAlleys);
-      const takenInAlley = existing.filter((exhibit) => exhibit.alleyIndex === target.alleyIndex).length;
+      const takenInAlley = existing.filter((exhibit) =>
+        exhibit.alleyIndex === target.alleyIndex
+        && exhibit.slotIndex !== null
+        && exhibit.slotIndex >= 0
+        && exhibit.slotIndex < env.alleyCapacity
+      ).length;
       await tx.exhibit.create({
         data: {
           ...fields,
@@ -197,8 +200,16 @@ app.post('/exhibits', async (c) => {
       };
     });
   } catch (error) {
-    await removeStoragePaths([image.path, thumb.path]);
-    if (error instanceof WingFullError) throw new ApiError(409, error.message);
+    if (error instanceof WingFullError) {
+      await removeStoragePaths([image.path, thumb.path]);
+      throw new ApiError(409, error.message);
+    }
+    // The write may have committed before the connection dropped. Only remove
+    // files when no exhibit references them; if the check fails, keep them.
+    const attached = await prisma.exhibit
+      .findFirst({ where: { OR: [{ imagePath: image.path }, { thumbPath: thumb.path }] }, select: { id: true } })
+      .catch(() => ({ id: 'unknown' }));
+    if (!attached) await removeStoragePaths([image.path, thumb.path]);
     throw error;
   }
 
@@ -241,22 +252,37 @@ app.delete('/exhibits/:id', async (c) => {
 
 app.put('/letter', async (c) => {
   const member = c.get('member');
-  const body = await readJson<{ title?: unknown; paragraphs?: unknown }>(c);
+  const body = await readJson<{ title?: unknown; paragraphs?: unknown; updatedAt?: unknown }>(c);
   const paragraphs = Array.isArray(body.paragraphs)
     ? body.paragraphs.map((paragraph) => tidyCaption(paragraph)).filter(Boolean)
     : [];
-  if (paragraphs.length < 1 || paragraphs.length > 12) throw new ApiError(400, 'Use between 1 and 12 paragraphs.');
-  if (paragraphs.some((paragraph) => paragraph.length > 4000)) throw new ApiError(400, 'Keep each paragraph under 4,000 characters.');
-  const title = typeof body.title === 'string' ? body.title.trim().slice(0, 80) : '';
+  if (paragraphs.length < LIMITS.letterParagraphMin || paragraphs.length > LIMITS.letterParagraphsMax) {
+    throw new ApiError(400, `Use between ${LIMITS.letterParagraphMin} and ${LIMITS.letterParagraphsMax} paragraphs.`);
+  }
+  if (paragraphs.some((paragraph) => paragraph.length > LIMITS.letterParagraphMax)) {
+    throw new ApiError(400, `Keep each paragraph under ${LIMITS.letterParagraphMax} characters.`);
+  }
+  const title = typeof body.title === 'string' ? body.title.trim().slice(0, LIMITS.letterTitleMax) : '';
   const current = await prisma.letter.findFirst({ where: { active: true }, orderBy: { updatedAt: 'desc' } });
-  const saved = current
-    ? await prisma.letter.update({
-        where: { id: current.id },
-        data: { ...(title ? { title } : {}), paragraphs, authorId: member.id },
-      })
-    : await prisma.letter.create({
-        data: { title: title || 'A Letter for You', paragraphs, authorId: member.id },
-      });
+  let saved;
+  if (current) {
+    const updatedAt = typeof body.updatedAt === 'string' ? new Date(body.updatedAt) : undefined;
+    if (!updatedAt || Number.isNaN(updatedAt.getTime())) {
+      throw new ApiError(400, 'Reload the letter before saving so newer words are not lost.');
+    }
+    const result = await prisma.letter.updateMany({
+      where: { id: current.id, updatedAt },
+      data: { ...(title ? { title } : {}), paragraphs, authorId: member.id },
+    });
+    if (result.count === 0) {
+      throw new ApiError(409, 'A newer letter was saved. Reload before saving.');
+    }
+    saved = await prisma.letter.findUniqueOrThrow({ where: { id: current.id } });
+  } else {
+    saved = await prisma.letter.create({
+      data: { title: title || 'A Letter for You', paragraphs, authorId: member.id },
+    });
+  }
   const letter = {
     title: saved.title,
     paragraphs: saved.paragraphs,

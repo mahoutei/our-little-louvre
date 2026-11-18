@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent, ReactNode } from 'react';
-import { STORAGE_BUCKET } from '../../shared/config';
+import { LIMITS, STORAGE_BUCKET } from '../../shared/config';
 import type { Collection, ExhibitBase, ExhibitFields, LetterView, MemberView, StudioData } from '../../shared/types';
 import { fieldsFrom, validateExhibitFields } from '../../shared/validation';
 import { api, ApiError } from '../api/client';
@@ -228,7 +228,7 @@ function LetterEditor({ letter, readOnly, busy, onSave }: {
   letter: LetterView;
   readOnly: boolean;
   busy: boolean;
-  onSave: (letter: { title: string; paragraphs: string[] }) => Promise<void>;
+  onSave: (letter: { title: string; paragraphs: string[]; updatedAt: string }) => Promise<void>;
 }) {
   const [title, setTitle] = useState(letter.title);
   const [paragraphs, setParagraphs] = useState(letter.paragraphs.length ? letter.paragraphs : ['']);
@@ -244,16 +244,16 @@ function LetterEditor({ letter, readOnly, busy, onSave }: {
       return;
     }
     setError(undefined);
-    void onSave({ title: title.trim() || 'A Letter for You', paragraphs: clean });
+    void onSave({ title: title.trim() || 'A Letter for You', paragraphs: clean, updatedAt: letter.updatedAt });
   }
   return <form className="studio-letter" onSubmit={submit}>
     <Field id="letter-title" label="Title">
-      <input id="letter-title" value={title} maxLength={80} readOnly={readOnly} onChange={(event) => setTitle(event.target.value)} />
+      <input id="letter-title" value={title} maxLength={LIMITS.letterTitleMax} readOnly={readOnly} onChange={(event) => setTitle(event.target.value)} />
     </Field>
     <div className="studio-paragraphs">
       {paragraphs.map((paragraph, index) => <div className="studio-paragraph" key={index}>
         <label htmlFor={`letter-paragraph-${index}`}>Paragraph {index + 1}</label>
-        <textarea id={`letter-paragraph-${index}`} rows={index === 0 ? 2 : 4} value={paragraph} maxLength={4000} readOnly={readOnly}
+        <textarea id={`letter-paragraph-${index}`} rows={index === 0 ? 2 : 4} value={paragraph} maxLength={LIMITS.letterParagraphMax} readOnly={readOnly}
           onChange={(event) => update(index, event.target.value)} />
         {!readOnly && paragraphs.length > 1 && <button type="button" className="studio-text-button" onClick={() => setParagraphs((current) => current.filter((_, at) => at !== index))}>
           Remove paragraph
@@ -261,7 +261,7 @@ function LetterEditor({ letter, readOnly, busy, onSave }: {
       </div>)}
     </div>
     {!readOnly && <div className="studio-row-actions">
-      <button className="button button--outline" type="button" disabled={busy || paragraphs.length >= 12} onClick={() => setParagraphs((current) => [...current, ''])}>
+      <button className="button button--outline" type="button" disabled={busy || paragraphs.length >= LIMITS.letterParagraphsMax} onClick={() => setParagraphs((current) => [...current, ''])}>
         Add a paragraph
       </button>
       <button className="button button--gold" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save the letter'}</button>
@@ -406,7 +406,7 @@ export function Studio() {
     }
   }
 
-  async function saveLetter(letter: { title: string; paragraphs: string[] }) {
+  async function saveLetter(letter: { title: string; paragraphs: string[]; updatedAt: string }) {
     if (demo) return;
     setSavingLetter(true);
     setNotice(null);
@@ -418,7 +418,12 @@ export function Studio() {
       setData((current) => current ? { ...current, collection, stats: statsOf(collection), letter: result.letter } : current);
       setNotice({ tone: 'good', text: 'The letter has been saved for the next visit.' });
     } catch (error) {
-      setNotice({ tone: 'bad', text: messageOf(error) });
+      if (error instanceof ApiError && error.status === 409) {
+        await load();
+        setNotice({ tone: 'bad', text: 'A newer letter was saved. The latest words are shown; make your changes again.' });
+      } else {
+        setNotice({ tone: 'bad', text: messageOf(error) });
+      }
     } finally {
       setSavingLetter(false);
     }

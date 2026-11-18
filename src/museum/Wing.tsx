@@ -126,8 +126,7 @@ export function WingArchitecture({ wing }: { wing: Wing }) {
   const entryCenter = galleryBackZ - WING.entryDepth / 2;
   const lastIndex = count - 1;
   const lastAlley = wing.alleys.find((alley) => alley.index === lastIndex);
-  const hanging = lastAlley?.exhibits.length ?? 0;
-  const remaining = Math.max(0, wing.capacity - hanging);
+  const remaining = lastAlley?.remaining ?? wing.capacity;
 
   return <group>
     <color attach="background" args={['#171310']} />

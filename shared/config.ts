@@ -1,6 +1,9 @@
 export const STORAGE_BUCKET = 'exhibits';
 
-export const DEFAULT_ALLEY_CAPACITY = 6;
+// The wing geometry has three rows of two frames. This is the hard ceiling;
+// WING_ALLEY_CAPACITY can only lower it.
+export const MAX_FRAMES_PER_ALLEY = 6;
+export const DEFAULT_ALLEY_CAPACITY = MAX_FRAMES_PER_ALLEY;
 export const DEFAULT_MAX_ALLEYS = 24;
 
 export const LIMITS = {
@@ -20,5 +23,4 @@ export const LIMITS = {
   thumbnailEdge: 900,
 } as const;
 
-export const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'] as const;
 export const UPLOAD_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;

@@ -11,7 +11,8 @@ const root = resolve(import.meta.dirname, '..');
 async function readLetter() {
   try {
     return JSON.parse(await readFile(resolve(root, 'prisma/letter.json'), 'utf8'));
-  } catch {
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
     return {
       title: 'A Letter for You',
       paragraphs: [

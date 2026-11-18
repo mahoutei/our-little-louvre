@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { alleyTotal, highestAlley, nextWingSlot, remainingInAlley, WingFullError } from '../../shared/slots';
+import { groupWingRows, highestAlley, nextWingSlot, WingFullError } from '../../shared/slots';
 
 const slot = (alleyIndex: number, slotIndex: number) => ({ alleyIndex, slotIndex });
 
@@ -17,8 +17,6 @@ describe('New Wing slots', () => {
     const exhibits = Array.from({ length: 6 }, (_, index) => slot(0, index));
     expect(nextWingSlot(exhibits, 6, 24)).toEqual({ alleyIndex: 1, slotIndex: 0, newAlley: true });
     expect(highestAlley(exhibits)).toBe(0);
-    expect(alleyTotal(exhibits, 6)).toBe(1);
-    expect(remainingInAlley(exhibits, 0, 6)).toBe(0);
   });
 
   it('fills an earlier gap even when a later alley is already in use', () => {
@@ -42,5 +40,22 @@ describe('New Wing slots', () => {
 
   it('rejects an invalid capacity', () => {
     expect(() => nextWingSlot([], 0, 24)).toThrow(/capacity/i);
+  });
+
+  it('counts hidden photographs against their frames', () => {
+    const rows = [
+      { alleyIndex: 0, slotIndex: 0, published: true },
+      { alleyIndex: 0, slotIndex: 1, published: false },
+      { alleyIndex: 1, slotIndex: 0, published: false },
+    ];
+    expect(groupWingRows(rows, 6)).toEqual([
+      { index: 0, rows: [rows[0], rows[1]], remaining: 4 },
+      { index: 1, rows: [rows[2]], remaining: 5 },
+    ]);
+  });
+
+  it('counts only frames inside a lowered capacity as taken', () => {
+    const rows = [{ alleyIndex: 0, slotIndex: 5, published: true }];
+    expect(groupWingRows(rows, 4)[0].remaining).toBe(4);
   });
 });

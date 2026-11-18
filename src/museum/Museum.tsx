@@ -4,7 +4,7 @@ import { preload } from 'react-dom';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { ACESFilmicToneMapping, PerspectiveCamera, Raycaster, Vector3 } from 'three';
-import type { Ray } from 'three';
+import type { Group, Ray } from 'three';
 import type { Wing } from '../../shared/types';
 import type { DisplayExhibit, Manifest } from '../exhibits/manifest';
 import { Icon } from '../Icons';
@@ -14,6 +14,7 @@ import { doorPose, isAtEntrance, isNearEntrance, rooms } from './layout';
 import type { BuiltRoom, Pose, Room } from './layout';
 import { clearInput, createInput, EYE_HEIGHT, movementVector, moveOnFloor, WALK_SPEED } from './movement';
 import { Architecture, CourtyardLight, GalleryLight, modelUrl } from './Scenery';
+import { hasClearSightline } from './sightline';
 import { galleryLightUrl } from './SurfaceDetail';
 import { TouchControls } from './TouchControls';
 import { requestMouseLook, useWalkInput } from './useWalkInput';
@@ -65,9 +66,7 @@ function World({ room, spawn, input, active, reset, doorRequest, unlocking, onDo
     if (!active || document.pointerLockElement === canvas || performance.now() - input.current.lastDrag <= 250) return false;
     const distance = ray.origin.distanceTo(point);
     if (distance > INSPECT_RANGE) return false;
-    sightline.ray.copy(ray);
-    sightline.far = distance - 0.015;
-    return sightline.intersectObject(building, true).length === 0;
+    return hasClearSightline(sightline, ray.origin, ray.direction, distance, building);
   }
 
   const inspect = useCallback(() => {
@@ -154,9 +153,7 @@ function World({ room, spawn, input, active, reset, doorRequest, unlocking, onDo
       vectors.offset.divideScalar(distance);
       const dot = vectors.offset.dot(vectors.forward);
       if (dot <= bestDot) continue;
-      sightline.set(camera.position, vectors.offset);
-      sightline.far = distance - 0.015;
-      if (sightline.intersectObject(building, true).length > 0) continue;
+      if (!hasClearSightline(sightline, camera.position, vectors.offset, distance, building)) continue;
       bestDot = dot;
       best = exhibit;
     }
@@ -181,12 +178,15 @@ function WingWorld({ wing = EMPTY_WING, input, active, reset, onReady, onFailure
   const walls = useMemo(() => wingWalls(count), [count]);
   const pose = useRef({ ...spawn });
   const lastTargetCheck = useRef(0);
+  const architecture = useRef<Group>(null);
   const vectors = useMemo(() => ({ forward: new Vector3(), offset: new Vector3(), front: new Vector3() }), []);
+  const sightline = useMemo(() => new Raycaster(), []);
   const placements = useWingPlacements(wing);
 
   function canClickFrame(ray: Ray, point: Vector3) {
     if (!active || document.pointerLockElement === canvas || performance.now() - input.current.lastDrag <= 250) return false;
-    return ray.origin.distanceTo(point) <= INSPECT_RANGE;
+    const distance = ray.origin.distanceTo(point);
+    return distance <= INSPECT_RANGE && hasClearSightline(sightline, ray.origin, ray.direction, distance, architecture.current);
   }
 
   const inspect = useCallback(() => {
@@ -247,6 +247,7 @@ function WingWorld({ wing = EMPTY_WING, input, active, reset, onReady, onFailure
       vectors.offset.divideScalar(length);
       const dot = vectors.offset.dot(vectors.forward);
       if (dot <= bestDot) continue;
+      if (!hasClearSightline(sightline, camera.position, vectors.offset, length, architecture.current)) continue;
       bestDot = dot;
       best = exhibit;
     }
@@ -254,7 +255,7 @@ function WingWorld({ wing = EMPTY_WING, input, active, reset, onReady, onFailure
   });
 
   return <>
-    <WingArchitecture wing={wing} />
+    <group ref={architecture}><WingArchitecture wing={wing} /></group>
     <WingFrames wing={wing} onOpen={onOpen} enabled={canClickFrame} />
   </>;
 }

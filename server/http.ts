@@ -19,7 +19,3 @@ export async function readJson<T>(c: Context): Promise<T> {
     throw new ApiError(400, 'Expected a JSON body.');
   }
 }
-
-export function textField(value: unknown, max = 500): string {
-  return typeof value === 'string' ? value.trim().slice(0, max) : '';
-}

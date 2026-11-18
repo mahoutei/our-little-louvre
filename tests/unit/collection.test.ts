@@ -36,7 +36,7 @@ const collection = (overrides: Record<string, unknown> = {}) => ({
     exhibits: Array.from({ length: 8 }, (_, index) => original(index)),
     finale: { exhibitId: 'photo-7', letterParagraphs: ['Dear you,', 'See you soon.'] },
   },
-  wing: { capacity: 6, alleys: [{ index: 0, exhibits: [wingPhoto()] }], total: 1 },
+  wing: { capacity: 6, alleys: [{ index: 0, remaining: 5, exhibits: [wingPhoto()] }], total: 1 },
   ...overrides,
 });
 
@@ -70,5 +70,37 @@ describe('private collection', () => {
     const data = collection();
     data.member.role = 'GUEST';
     expect(() => parseCollection(data)).toThrow(/role/i);
+  });
+
+  it('keeps a photograph hung above a lowered capacity', () => {
+    const data = collection({
+      wing: { capacity: 4, alleys: [{ index: 0, remaining: 4, exhibits: [wingPhoto({ slotIndex: 5 })] }], total: 1 },
+    });
+    expect(parseCollection(data).wing.alleys[0].exhibits[0].slotIndex).toBe(5);
+  });
+
+  it('rejects a frame beyond the six-frame geometry', () => {
+    const data = collection({
+      wing: { capacity: 6, alleys: [{ index: 0, remaining: 6, exhibits: [wingPhoto({ slotIndex: 6 })] }], total: 1 },
+    });
+    expect(() => parseCollection(data)).toThrow(/frame slot/i);
+  });
+
+  it('rejects an alley capacity the geometry cannot hold', () => {
+    const data = collection({
+      wing: { capacity: 7, alleys: [{ index: 0, remaining: 0, exhibits: [wingPhoto({ slotIndex: 2 })] }], total: 1 },
+    });
+    expect(() => parseCollection(data)).toThrow(/capacity/i);
+  });
+
+  it('keeps the free frame count sent by the server', () => {
+    expect(parseCollection(collection()).wing.alleys[0].remaining).toBe(5);
+  });
+
+  it('rejects a negative free frame count', () => {
+    const data = collection({
+      wing: { capacity: 6, alleys: [{ index: 0, remaining: -1, exhibits: [wingPhoto()] }], total: 1 },
+    });
+    expect(() => parseCollection(data)).toThrow(/free frame/i);
   });
 });

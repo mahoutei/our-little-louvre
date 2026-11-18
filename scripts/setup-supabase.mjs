@@ -29,7 +29,10 @@ if (buckets.some((bucket) => bucket.name === STORAGE_BUCKET)) {
     fileSizeLimit: '10MB',
     allowedMimeTypes: ['image/webp', 'image/jpeg', 'image/png'],
   });
-  if (error) console.warn('Could not refresh bucket settings:', error.message);
+  if (error) {
+    console.error('Could not refresh bucket settings:', error.message);
+    process.exit(1);
+  }
 } else {
   const { error } = await supabase.storage.createBucket(STORAGE_BUCKET, {
     public: false,
@@ -46,6 +49,7 @@ if (buckets.some((bucket) => bucket.name === STORAGE_BUCKET)) {
 // The museum API is the only door into these tables. Revoke the Data API roles
 // so the publishable key cannot read personal photographs or the letter.
 const prisma = new PrismaClient();
+let hardeningFailed = false;
 for (const statement of [
   'ALTER TABLE "Member" ENABLE ROW LEVEL SECURITY',
   'ALTER TABLE "Exhibit" ENABLE ROW LEVEL SECURITY',
@@ -56,8 +60,13 @@ for (const statement of [
   try {
     await prisma.$executeRawUnsafe(statement);
   } catch (error) {
-    console.warn(`Database hardening step skipped: ${statement}`, error.message);
+    hardeningFailed = true;
+    console.error(`Database hardening step failed: ${statement}`, error.message);
   }
 }
 await prisma.$disconnect();
+if (hardeningFailed) {
+  console.error('Database hardening did not finish. Fix the error above and run this script again.');
+  process.exit(1);
+}
 console.log('Database tables are private to the service role.');

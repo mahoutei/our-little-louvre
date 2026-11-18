@@ -33,6 +33,8 @@ export type Manifest = {
 
 export type WingAlley = {
   index: number;
+  /** Frames still free, including frames whose photograph is hidden. */
+  remaining: number;
   exhibits: WingExhibit[];
 };
 
@@ -94,16 +96,18 @@ export type LetterView = {
   updatedAt: string;
 };
 
+export type StudioStats = {
+  originals: number;
+  wing: number;
+  published: number;
+  alleys: number;
+  capacity: number;
+};
+
 export type StudioData = {
   collection: Collection;
   letter: LetterView;
-  stats: {
-    originals: number;
-    wing: number;
-    published: number;
-    alleys: number;
-    capacity: number;
-  };
+  stats: StudioStats;
 };
 
 export type ApiErrorBody = { error: string; fields?: Record<string, string> };
