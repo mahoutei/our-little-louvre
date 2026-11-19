@@ -1,5 +1,5 @@
-import { LIMITS } from './config';
-import type { ExhibitFields } from './types';
+import { LIMITS } from './config.js';
+import type { ExhibitFields } from './types.js';
 
 export type FieldErrors = Partial<Record<keyof ExhibitFields, string>>;
 

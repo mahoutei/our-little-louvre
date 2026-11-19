@@ -1,6 +1,6 @@
 import { config } from 'dotenv';
-import { DEFAULT_ALLEY_CAPACITY, DEFAULT_MAX_ALLEYS } from '../shared/config';
-import { DEFAULT_PARTNER_PAUSE_MESSAGE } from '../shared/pause';
+import { DEFAULT_ALLEY_CAPACITY, DEFAULT_MAX_ALLEYS } from '../shared/config.js';
+import { DEFAULT_PARTNER_PAUSE_MESSAGE } from '../shared/pause.js';
 
 // Vercel supplies real environment variables. Locally, the secrets live in
 // .env.local, which is gitignored. Never import this module in browser code.

@@ -1,11 +1,11 @@
 import type { Member } from '@prisma/client';
 import { isAuthRetryableFetchError } from '@supabase/supabase-js';
 import type { MiddlewareHandler } from 'hono';
-import { pausedMessageFor } from '../shared/pause';
-import { ApiError } from './http';
-import { env, guestListReady, isAllowedEmail, nameFor, roleFor, serverReady } from './env';
-import { prisma } from './prisma';
-import { supabaseAdmin } from './supabase';
+import { pausedMessageFor } from '../shared/pause.js';
+import { ApiError } from './http.js';
+import { env, guestListReady, isAllowedEmail, nameFor, roleFor, serverReady } from './env.js';
+import { prisma } from './prisma.js';
+import { supabaseAdmin } from './supabase.js';
 
 export type AppBindings = {
   Variables: {

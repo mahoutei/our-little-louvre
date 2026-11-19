@@ -1,4 +1,4 @@
-import type { Role } from './types';
+import type { Role } from './types.js';
 
 export const DEFAULT_PARTNER_PAUSE_MESSAGE = 'Dean is cooking something';
 

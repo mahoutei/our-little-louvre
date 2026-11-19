@@ -1,6 +1,6 @@
 import type { Exhibit as DbExhibit, Letter } from '@prisma/client';
-import { STORAGE_BUCKET } from '../shared/config';
-import { groupWingRows } from '../shared/slots';
+import { STORAGE_BUCKET } from '../shared/config.js';
+import { groupWingRows } from '../shared/slots.js';
 import type {
   Collection,
   Exhibit,
@@ -9,12 +9,12 @@ import type {
   StudioData,
   WingAlley,
   WingExhibit,
-} from '../shared/types';
-import { memberView } from './auth';
-import { env } from './env';
-import { ApiError } from './http';
-import { prisma } from './prisma';
-import { supabaseAdmin } from './supabase';
+} from '../shared/types.js';
+import { memberView } from './auth.js';
+import { env } from './env.js';
+import { ApiError } from './http.js';
+import { prisma } from './prisma.js';
+import { supabaseAdmin } from './supabase.js';
 
 type DbExhibitWithAuthor = DbExhibit & { author: { name: string } | null };
 

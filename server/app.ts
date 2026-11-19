@@ -1,16 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { Hono } from 'hono';
-import { LIMITS, STORAGE_BUCKET, UPLOAD_IMAGE_TYPES } from '../shared/config';
-import { nextWingSlot, WingFullError } from '../shared/slots';
-import type { ExhibitPatch, NewExhibitInput, WingSlot } from '../shared/types';
-import { fieldsFrom, tidyCaption, validateExhibitFields } from '../shared/validation';
-import { allowedEmailResult, memberView, pauseMessageFor, requireMember, requireOpenMuseum, type AppBindings } from './auth';
-import { env } from './env';
-import { ApiError, readJson } from './http';
-import { prisma } from './prisma';
-import { buildCollection, buildStudioData, readLetter, removeStoragePaths } from './serialize';
-import { supabaseAdmin } from './supabase';
+import { LIMITS, STORAGE_BUCKET, UPLOAD_IMAGE_TYPES } from '../shared/config.js';
+import { nextWingSlot, WingFullError } from '../shared/slots.js';
+import type { ExhibitPatch, NewExhibitInput, WingSlot } from '../shared/types.js';
+import { fieldsFrom, tidyCaption, validateExhibitFields } from '../shared/validation.js';
+import { allowedEmailResult, memberView, pauseMessageFor, requireMember, requireOpenMuseum, type AppBindings } from './auth.js';
+import { env } from './env.js';
+import { ApiError, readJson } from './http.js';
+import { prisma } from './prisma.js';
+import { buildCollection, buildStudioData, readLetter, removeStoragePaths } from './serialize.js';
+import { supabaseAdmin } from './supabase.js';
 
 const app = new Hono<AppBindings>().basePath('/api');
 
