@@ -3,4 +3,4 @@ import { app } from '../server/app';
 
 export const config = { maxDuration: 30 };
 
-export default handle(app);
+export default { fetch: handle(app) };

@@ -24,29 +24,32 @@ type RequestOptions = {
   token?: string | null;
   method?: string;
   body?: unknown;
+  signal?: AbortSignal;
 };
 
-async function request<T>(path: string, { token, method = 'GET', body }: RequestOptions = {}): Promise<T> {
+async function request<T>(path: string, { token, method = 'GET', body, signal }: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
 
   let response: Response;
+  let data: { error?: string; fields?: Record<string, string> };
   try {
     response = await fetch(`/api${path}`, {
       method,
       headers,
       cache: 'no-store',
+      signal,
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+    data = await response.json().catch((error: unknown) => {
+      if (signal?.aborted) throw error;
+      return {};
     });
   } catch {
     throw new ApiError(0, 'The museum office could not be reached. Check your connection.');
   }
 
-  const data = (await response.json().catch(() => ({}))) as {
-    error?: string;
-    fields?: Record<string, string>;
-  };
   if (!response.ok) {
     throw new ApiError(response.status, data.error ?? 'The museum office could not complete that request.', data.fields);
   }
@@ -56,7 +59,19 @@ async function request<T>(path: string, { token, method = 'GET', body }: Request
 export const api = {
   allowed: (email: string) =>
     request<{ allowed: boolean; configured: boolean }>(`/auth/allowed?email=${encodeURIComponent(email)}`),
-  me: (token: string) => request<SessionView>('/me', { token }),
+  async me(token: string, signal?: AbortSignal) {
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    if (signal?.aborted) abort();
+    else signal?.addEventListener('abort', abort, { once: true });
+    const timeout = setTimeout(abort, 15_000);
+    try {
+      return await request<SessionView>('/me', { token, signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener('abort', abort);
+    }
+  },
   collection: (token: string) => request<{ collection: unknown }>('/collection', { token }),
   studio: (token: string) => request<Omit<StudioData, 'stats'>>('/studio', { token }),
   updateProfile: (token: string, name: string) =>

@@ -22,6 +22,8 @@ type AuthContextValue = {
   updateMember: (member: MemberView) => void;
 };
 
+type MemberPoll = { session: Session; controller: AbortController };
+
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -31,38 +33,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [configured, setConfigured] = useState(demoMode || supabaseConfigured);
   const [loading, setLoading] = useState(!demoMode);
   const [accessError, setAccessError] = useState<string | null>(null);
-  const refreshing = useRef<Promise<MemberView | null> | null>(null);
+  const refreshing = useRef<{ run: Promise<MemberView | null>; poll?: MemberPoll } | null>(null);
 
-  const refreshMember = useCallback(async (): Promise<MemberView | null> => {
+  const refreshMember = useCallback(async (poll?: MemberPoll): Promise<MemberView | null> => {
     if (demoMode) return demoMember;
-    if (!supabase) return null;
-    if (refreshing.current) return refreshing.current;
+    const signal = poll?.controller.signal;
+    if (!supabase || signal?.aborted) return null;
+    if (refreshing.current && !refreshing.current.poll?.controller.signal.aborted) return refreshing.current.run;
 
     const run = (async () => {
-      const { data } = await supabase.auth.getSession();
-      const current = data.session;
+      const current = poll?.session ?? (await supabase.auth.getSession()).data.session;
       if (!current) {
         setSession(null);
         setMember(null);
         setPauseMessage(null);
         return null;
       }
-      setSession(current);
+      if (!poll) setSession(current);
       try {
-        const result = await api.me(current.access_token);
+        const result = await api.me(current.access_token, signal);
+        if (signal?.aborted) return null;
         setMember(result.member);
         setPauseMessage(result.pause?.message ?? null);
         setAccessError(null);
         return result.member;
       } catch (error) {
+        if (signal?.aborted) return null;
         if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
-          await supabase.auth.signOut();
           setSession(null);
           setMember(null);
           setPauseMessage(null);
+          await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
           setAccessError(error.status === 403 ? error.message : null);
           return null;
         }
+        // Preserve the current view when a background check cannot reach the office.
+        if (poll) return null;
         setMember(null);
         setPauseMessage(null);
         setAccessError(error instanceof Error ? error.message : 'The museum office could not be reached.');
@@ -70,11 +76,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     })();
 
-    refreshing.current = run;
+    refreshing.current = { run, poll };
     try {
       return await run;
     } finally {
-      refreshing.current = null;
+      if (refreshing.current?.run === run) refreshing.current = null;
     }
   }, []);
 
@@ -89,6 +95,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     const { data: subscription } = supabase.auth.onAuthStateChange((event, next) => {
       if (cancelled) return;
+      const poll = refreshing.current?.poll;
+      if (poll && poll.session.access_token !== next?.access_token) poll.controller.abort();
       setSession(next);
       if (event === 'SIGNED_OUT') {
         setMember(null);
@@ -123,17 +131,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (demoMode || !session) return;
+    const controller = new AbortController();
     const timer = window.setInterval(() => {
-      void api.me(session.access_token)
-        .then((result) => {
-          setMember(result.member);
-          setPauseMessage(result.pause?.message ?? null);
-        })
-        // A background check must not close an open museum on a network blip.
-        .catch(() => {});
+      void refreshMember({ session, controller });
     }, 60_000);
-    return () => window.clearInterval(timer);
-  }, [session]);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, [refreshMember, session]);
 
   const signIn = useCallback(async (email: string): Promise<'sent' | 'not-allowed'> => {
     if (!supabase) throw new Error('The private entrance is not configured yet.');

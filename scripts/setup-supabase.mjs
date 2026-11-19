@@ -53,8 +53,9 @@ let hardeningFailed = false;
 for (const statement of [
   'ALTER TABLE "Member" ENABLE ROW LEVEL SECURITY',
   'ALTER TABLE "Exhibit" ENABLE ROW LEVEL SECURITY',
+  'ALTER TABLE "DiscardedUpload" ENABLE ROW LEVEL SECURITY',
   'ALTER TABLE "Letter" ENABLE ROW LEVEL SECURITY',
-  'REVOKE ALL ON TABLE "Member", "Exhibit", "Letter", "_prisma_migrations" FROM anon, authenticated',
+  'REVOKE ALL ON TABLE "Member", "Exhibit", "DiscardedUpload", "Letter", "_prisma_migrations" FROM anon, authenticated',
   'REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated',
 ]) {
   try {

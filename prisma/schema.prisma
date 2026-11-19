@@ -58,6 +58,10 @@ model Exhibit {
   @@index([origin, alleyIndex, slotIndex])
 }
 
+model DiscardedUpload {
+  path String @id
+}
+
 model Letter {
   id         String   @id @default(cuid())
   title      String   @default("A Letter for You")

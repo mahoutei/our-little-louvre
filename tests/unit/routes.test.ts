@@ -14,8 +14,8 @@ const state = vi.hoisted(() => ({
   getUser: vi.fn(),
   findUnique: vi.fn(),
   upsert: vi.fn(),
+  exhibitFindUnique: vi.fn(),
   exhibitFindMany: vi.fn(),
-  exhibitFindFirst: vi.fn(),
   exhibitCreate: vi.fn(),
   exhibitUpdate: vi.fn(),
   exhibitDelete: vi.fn(),
@@ -25,6 +25,9 @@ const state = vi.hoisted(() => ({
   letterUpdate: vi.fn(),
   letterCreate: vi.fn(),
   transaction: vi.fn(),
+  executeRaw: vi.fn(),
+  discardPaths: vi.fn(),
+  findDiscardedPath: vi.fn(),
   list: vi.fn(),
   remove: vi.fn(),
   createSignedUrls: vi.fn(),
@@ -59,8 +62,8 @@ vi.mock('../../server/prisma', () => ({
   prisma: {
     member: { findUnique: state.findUnique, upsert: state.upsert },
     exhibit: {
+      findUnique: state.exhibitFindUnique,
       findMany: state.exhibitFindMany,
-      findFirst: state.exhibitFindFirst,
       create: state.exhibitCreate,
       update: state.exhibitUpdate,
       delete: state.exhibitDelete,
@@ -91,6 +94,14 @@ vi.mock('../../server/supabase', () => ({
 }));
 
 import { app } from '../../server/app';
+import vercelFunction from '../../api';
+
+it('dispatches nested API requests through the Vercel Web handler', async () => {
+  const response = await vercelFunction.fetch(
+    new Request('https://museum.example/api/uploads/discard', { method: 'POST' }),
+  );
+  expect(response.status).toBe(401);
+});
 
 const auth = { Authorization: 'Bearer test-token' };
 const json = (body: unknown, method = 'POST') => ({
@@ -102,6 +113,44 @@ const json = (body: unknown, method = 'POST') => ({
 const base = '00000000-0000-0000-0000-000000000000';
 const imagePath = `auth-1/${base}-full.webp`;
 const thumbPath = `auth-1/${base}-thumb.webp`;
+const newExhibit = { imagePath, thumbPath, title: 'A memory', caption: 'A day.', alt: 'Two cups' };
+const hungExhibit = {
+  ...newExhibit,
+  id: 'exhibit-1',
+  slug: 'wing-exhibit-1',
+  origin: 'WING',
+  anchor: null,
+  dateLabel: null,
+  width: null,
+  height: null,
+  published: true,
+  sortOrder: 0,
+  alleyIndex: 0,
+  slotIndex: 2,
+  authorId: state.member.id,
+  author: { name: state.member.name },
+  createdAt: state.member.createdAt,
+  updatedAt: state.member.updatedAt,
+};
+const originals = Array.from({ length: 8 }, (_, index) => ({
+  ...hungExhibit,
+  id: `original-${index}`,
+  slug: `original-${index}`,
+  origin: 'ORIGINAL',
+  anchor: `EXHIBIT_${index}`,
+  imagePath: `/original-${index}.webp`,
+  thumbPath: `/original-${index}-thumb.webp`,
+}));
+const transactionClient = {
+  $executeRaw: state.executeRaw,
+  exhibit: {
+    findUnique: state.exhibitFindUnique,
+    findMany: state.exhibitFindMany,
+    create: state.exhibitCreate,
+    delete: state.exhibitDelete,
+  },
+  discardedUpload: { createMany: state.discardPaths, findFirst: state.findDiscardedPath },
+};
 
 describe('private routes', () => {
   beforeEach(() => {
@@ -111,6 +160,10 @@ describe('private routes', () => {
     state.findUnique.mockResolvedValue(state.member);
     state.list.mockResolvedValue({ data: [], error: null });
     state.remove.mockResolvedValue({ data: [], error: null });
+    state.exhibitFindMany.mockResolvedValue([]);
+    state.transaction.mockImplementation(async (run) => run(transactionClient));
+    state.discardPaths.mockResolvedValue({ count: 2 });
+    state.findDiscardedPath.mockResolvedValue(null);
     state.createSignedUrls.mockResolvedValue({ data: [], error: null });
     state.letterFindFirst.mockResolvedValue(null);
   });
@@ -120,6 +173,7 @@ describe('private routes', () => {
     state.findUnique.mockResolvedValue({ ...state.member, role: 'PARTNER' });
     const response = await app.request('/api/me', { headers: auth });
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
     expect(await response.json()).toMatchObject({ pause: { message: 'Dean is cooking something' } });
   });
 
@@ -128,6 +182,7 @@ describe('private routes', () => {
     state.findUnique.mockResolvedValue({ ...state.member, role: 'PARTNER' });
     const response = await app.request('/api/collection', { headers: auth });
     expect(response.status).toBe(423);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
   });
 
   it('rejects an upload path owned by another member', async () => {
@@ -139,6 +194,110 @@ describe('private routes', () => {
       alt: 'Two cups',
     }));
     expect(response.status).toBe(400);
+  });
+
+  it('discards only files owned by the caller and unused by the collection', async () => {
+    const orphan = `auth-1/${base}-full.jpg`;
+    const other = `other-1/${base}-full.webp`;
+    state.exhibitFindMany.mockResolvedValue([{ imagePath, thumbPath }]);
+    const response = await app.request('/api/uploads/discard', json({ paths: [imagePath, thumbPath, orphan, other] }));
+    expect(response.status).toBe(200);
+    expect(state.remove).toHaveBeenCalledExactlyOnceWith([orphan]);
+  });
+
+  it('keeps upload files when the reference check fails', async () => {
+    state.exhibitFindMany.mockRejectedValue(new Error('database unavailable'));
+    const response = await app.request('/api/uploads/discard', json({ paths: [imagePath, thumbPath] }));
+    expect(response.status).toBe(500);
+    expect(state.remove).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['discarding an upload', '/api/uploads/discard', json({ paths: [imagePath] })],
+    ['deleting an exhibit', '/api/exhibits/exhibit-1', { method: 'DELETE', headers: auth }],
+  ])('rejects a create while storage removal is pending after %s', async (_operation, path, request) => {
+    state.exhibitFindUnique.mockResolvedValue(hungExhibit);
+    state.exhibitFindMany.mockImplementation(async ({ where }) =>
+      where.origin === 'ORIGINAL' ? originals : []
+    );
+    state.list.mockResolvedValue({
+      data: [{ name: `${base}-full.webp` }, { name: `${base}-thumb.webp` }],
+      error: null,
+    });
+    const discarded = new Set<string>();
+    let committed = false;
+    state.discardPaths.mockImplementation(async ({ data }: { data: { path: string }[] }) => {
+      for (const entry of data) discarded.add(entry.path);
+      return { count: data.length };
+    });
+    state.findDiscardedPath.mockImplementation(async ({ where }: { where: { path: { in: string[] } } }) => {
+      const found = where.path.in.find((candidate) => discarded.has(candidate));
+      return found ? { path: found } : null;
+    });
+    state.transaction.mockImplementationOnce(async (run) => {
+      const result = await run(transactionClient);
+      committed = true;
+      return result;
+    });
+    let createDuringRemoval: Response | undefined;
+    let removalAfterCommit = false;
+    state.remove.mockImplementationOnce(async () => {
+      removalAfterCommit = committed;
+      createDuringRemoval = await app.request('/api/exhibits', json(newExhibit));
+      return { data: [], error: null };
+    });
+    const response = await app.request(path, request);
+    expect(response.status).toBe(200);
+    expect(createDuringRemoval?.status).toBe(409);
+    expect(removalAfterCommit).toBe(true);
+    expect(state.exhibitCreate).not.toHaveBeenCalled();
+  });
+
+  it('keeps a hung photograph when another create request has invalid details', async () => {
+    state.exhibitFindMany.mockResolvedValue([{ imagePath, thumbPath }]);
+    const response = await app.request('/api/exhibits', json({ ...newExhibit, title: '' }));
+    expect(response.status).toBe(400);
+    expect(state.remove).not.toHaveBeenCalled();
+  });
+
+  it('returns the existing frame when exhibit creation is retried', async () => {
+    state.list.mockResolvedValue({
+      data: [{ name: `${base}-full.webp` }, { name: `${base}-thumb.webp` }],
+      error: null,
+    });
+    state.exhibitFindMany.mockImplementation(async ({ where }) =>
+      where.origin === 'ORIGINAL' ? originals : [hungExhibit]
+    );
+    const response = await app.request('/api/exhibits', json(newExhibit));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      slot: { alleyIndex: 0, slotIndex: 2, newAlley: false, remainingInAlley: 5 },
+    });
+    expect(state.exhibitCreate).not.toHaveBeenCalled();
+    expect(state.remove).not.toHaveBeenCalled();
+  });
+
+  it('keeps shared files when a duplicate exhibit is deleted', async () => {
+    const survivor = { ...hungExhibit, id: 'exhibit-2', slug: 'wing-exhibit-2', slotIndex: 3 };
+    state.exhibitFindUnique.mockResolvedValue(hungExhibit);
+    state.exhibitFindMany.mockImplementation(async ({ where }) =>
+      where.origin === 'ORIGINAL' ? originals : [survivor]
+    );
+    const response = await app.request('/api/exhibits/exhibit-1', { method: 'DELETE', headers: auth });
+    expect(response.status).toBe(200);
+    expect(state.exhibitDelete).toHaveBeenCalledWith({ where: { id: 'exhibit-1' } });
+    expect(state.remove).not.toHaveBeenCalled();
+  });
+
+  it('reports a deleted exhibit when the subsequent storage removal fails', async () => {
+    state.exhibitFindUnique.mockResolvedValue(hungExhibit);
+    state.exhibitFindMany.mockImplementation(async ({ where }) =>
+      where.origin === 'ORIGINAL' ? originals : []
+    );
+    state.remove.mockRejectedValue(new Error('storage unavailable'));
+    const response = await app.request('/api/exhibits/exhibit-1', { method: 'DELETE', headers: auth });
+    expect(response.status).toBe(200);
+    expect(state.exhibitDelete).toHaveBeenCalledWith({ where: { id: 'exhibit-1' } });
   });
 
   it('rejects a letter with too many paragraphs', async () => {
@@ -190,11 +349,9 @@ describe('private routes', () => {
       data: [{ name: `${base}-full.webp` }, { name: `${base}-thumb.webp` }],
       error: null,
     });
-    state.transaction.mockRejectedValue(new Error('connection lost after commit'));
-    state.exhibitFindFirst.mockResolvedValue({ id: 'exhibit-1' });
-    const response = await app.request('/api/exhibits', json({
-      imagePath, thumbPath, title: 'A memory', caption: 'A day.', alt: 'Two cups',
-    }));
+    state.transaction.mockRejectedValueOnce(new Error('connection lost after commit'));
+    state.exhibitFindMany.mockResolvedValue([{ imagePath, thumbPath }]);
+    const response = await app.request('/api/exhibits', json(newExhibit));
     expect(response.status).toBe(500);
     expect(state.remove).not.toHaveBeenCalled();
   });
@@ -204,11 +361,8 @@ describe('private routes', () => {
       data: [{ name: `${base}-full.webp` }, { name: `${base}-thumb.webp` }],
       error: null,
     });
-    state.transaction.mockRejectedValue(new Error('connection lost'));
-    state.exhibitFindFirst.mockResolvedValue(null);
-    const response = await app.request('/api/exhibits', json({
-      imagePath, thumbPath, title: 'A memory', caption: 'A day.', alt: 'Two cups',
-    }));
+    state.transaction.mockRejectedValueOnce(new Error('connection lost'));
+    const response = await app.request('/api/exhibits', json(newExhibit));
     expect(response.status).toBe(500);
     expect(state.remove).toHaveBeenCalledWith([imagePath, thumbPath]);
   });

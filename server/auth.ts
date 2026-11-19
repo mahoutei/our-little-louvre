@@ -1,4 +1,5 @@
 import type { Member } from '@prisma/client';
+import { isAuthRetryableFetchError } from '@supabase/supabase-js';
 import type { MiddlewareHandler } from 'hono';
 import { pausedMessageFor } from '../shared/pause';
 import { ApiError } from './http';
@@ -21,12 +22,15 @@ export const requireMember: MiddlewareHandler<AppBindings> = async (c, next) => 
   if (!token) throw new ApiError(401, 'Sign in to enter the museum.');
 
   const { data, error } = await supabaseAdmin().auth.getUser(token);
+  if (isAuthRetryableFetchError(error) || (error?.status ?? 0) >= 500) {
+    throw new ApiError(503, 'The museum could not check your key. Try again in a moment.');
+  }
   const email = data.user?.email?.trim().toLowerCase();
   if (error || !data.user || !email) throw new ApiError(401, 'Your key has expired. Sign in again.');
+  if (!isAllowedEmail(email)) throw new ApiError(403, 'This museum is kept for two people.');
 
   let member = await prisma.member.findUnique({ where: { authId: data.user.id } });
   if (!member) {
-    if (!isAllowedEmail(email)) throw new ApiError(403, 'This museum is kept for two people.');
     // Concurrent first requests would otherwise both try to create the same row.
     member = await prisma.member.upsert({
       where: { email },
@@ -40,9 +44,7 @@ export const requireMember: MiddlewareHandler<AppBindings> = async (c, next) => 
     });
   }
 
-  if (!member) throw new ApiError(403, 'This museum is kept for two people.');
-  // Changing the guest list must revoke existing sessions as well as block new ones.
-  if (!isAllowedEmail(member.email)) throw new ApiError(403, 'This museum is kept for two people.');
+  if (member.email !== email) throw new ApiError(403, 'This museum is kept for two people.');
   c.set('member', member);
   await next();
 };

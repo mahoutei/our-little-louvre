@@ -1,6 +1,6 @@
 # Our Little Louvre
 
-A phone-first, first-person museum for two: a blue-hour courtyard, the Gallery of Us, a final exhibit with a letter, and a procedural New Wing that grows as photographs are added. The public preview includes ten fictional travel memories and a sample letter. The private museum replaces them with the collection and letter stored in Supabase.
+A phone-first, first-person museum for two. Enter through the blue-hour courtyard, explore the Gallery of Us and the New Wing, and find a letter at the final exhibit. The ten original photos are fictional travel memories bundled with the site. Your uploads and the private letter live in Supabase.
 
 ## A museum for two
 
@@ -38,18 +38,19 @@ You will need Node 22 LTS or newer and a [Supabase](https://supabase.com) projec
    | `OWNER_NAME`, `PARTNER_NAME` | The names shown on labels and in the studio. |
    | `PARTNER_PAUSED`, `PARTNER_PAUSED_MESSAGE` | Optional. Hold the partner’s side behind a cover page while a surprise is prepared. See [Keeping the surprise](#keeping-the-surprise). |
 
-3. Create the private storage bucket and lock down the database tables.
-
-   ```powershell
-   npm.cmd run setup:supabase
-   ```
-
-   The script exits nonzero and names the failed step if it cannot refresh the bucket or harden a table, so do not continue until it finishes cleanly.
-
-4. Create the tables and seed the original collection.
+3. Create the tables, then set up private storage and lock down access to the tables.
 
    ```powershell
    npm.cmd run db:migrate
+   if ($LASTEXITCODE -ne 0) { throw 'Museum migration failed.' }
+   npm.cmd run setup:supabase
+   ```
+
+   Run the commands in order. The setup script exits with an error if it cannot refresh the bucket or lock down a table. Seed the collection after both commands succeed.
+
+4. Seed the original collection.
+
+   ```powershell
    npm.cmd run db:seed
    ```
 
@@ -70,7 +71,7 @@ You will need Node 22 LTS or newer and a [Supabase](https://supabase.com) projec
 
    Vite serves the museum at the Local URL it prints (usually `http://localhost:5173`). The API listens on `http://127.0.0.1:8787`, and Vite proxies `/api` to it. Open the site, enter one of the two guest addresses, and follow the link from the email in the same browser.
 
-If the studio address is empty, the museum’s entrance page will say the private entrance is not connected yet. Add the values, restart `npm run dev`, and reload.
+If the browser's Supabase settings are missing, the entrance shows a setup message. Add the values, restart `npm run dev`, and reload.
 
 ### The letter
 
@@ -112,9 +113,9 @@ With the flag on, the partner’s sign-in still succeeds, but the museum and stu
 
 Set `PARTNER_PAUSED=1` in `.env.local` for local work, and in the hosting environment for production. Either way the API reads the value at startup, so restart `npm run dev` (or redeploy) after changing it. Remove the flag, or set it to `0`, to reopen the partner’s side. `PARTNER_PAUSED_MESSAGE` defaults to `Dean is cooking something`.
 
-A signed-in partner’s browser checks `/api/me` once a minute, so turning the pause on or off reaches an open tab within a minute without a reload.
+A signed-in partner’s browser checks `/api/me` once a minute while the tab is active. The next successful check applies the pause setting.
 
-Nothing you add is readable without a session: the museum, the photo index, the collection API, the studio API, the database tables, and the uploaded photographs are all private. The ten baked demo photographs and the sample manifest in `public/content` are served as static preview files, so keep only fictional demo material there. The real letter and every uploaded photograph live in Supabase behind the API.
+The API checks the session before returning the collection, the studio, or new signed photo URLs. Anyone holding a signed photo URL can use it until it expires, up to six hours from issuance. That expiry still applies after sign-out, a pause, or hiding the photo from the gallery. Treat signed URLs as private. Keep `public/content` limited to fictional demo material because Vercel serves those files directly. [Supabase signed URL documentation](https://supabase.com/docs/guides/storage/security/signing-keys)
 
 ## Checks
 
@@ -124,30 +125,33 @@ npm.cmd run build
 npm.cmd run test:e2e
 ```
 
-`npm run test:e2e` builds a demo copy with `VITE_DEMO_MODE=1`, so the browser suite uses the static collection and bypasses sign-in. It does not write to Supabase. The suite uses Microsoft Edge on Windows; on other platforms install Chromium with `npx playwright install chromium`. The 3D walkthrough test renders with software WebGL, so it can take about a minute.
+`npm run test:e2e` builds a demo copy in `dist-demo/`. The browser suite uses the static collection and bypasses sign-in. The production build goes to `dist/`. The suite uses Microsoft Edge on Windows. On other platforms, install Chromium with `npx playwright install chromium`. The 3D walkthrough test renders with software WebGL and can take about a minute.
 
-To preview the public demo build without Supabase configured, run `npm.cmd run build:e2e` followed by `npm.cmd run preview`.
+To preview the demo locally, run `npm.cmd run build:e2e` followed by `npm.cmd run preview -- --mode demo`.
 
 ## Deploying
 
-The repository includes `vercel.json` and a serverless Hono entry point at `api/[...route].ts`. The same Hono app runs on Node locally and on Vercel in production.
+The repository includes `vercel.json` and a serverless Hono entry point at `api/index.ts`. The same Hono app runs on Node locally and on Vercel in production.
 
-1. Import the repository into Vercel. Keep the configured build command (`npm run build`) and output directory (`dist`).
-2. Add every server value from `.env.local` to the Vercel project’s environment variables, plus `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. Do not add `VITE_DEMO_MODE`.
-3. From your machine, apply the schema and seed the production database:
+1. Set the project to Node 22 or newer in Vercel, with `npm run build` as the build command and `dist` as the output directory. Configure Preview with placeholder content in a separate Supabase project. For each environment, set the server values `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `OWNER_EMAIL` and `PARTNER_EMAIL`, plus any display names or pause settings you use. Set the browser's `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` for that same Supabase project. Keep `DIRECT_URL` in the environment you use for migrations. [Vercel environments](https://vercel.com/docs/deployments/environments)
+2. Prepare each Supabase project from your machine using that project's environment values. Use a fresh checkout for the first deployment so the seed uses the built-in sample letter.
 
    ```powershell
    npm.cmd run db:deploy
+   if ($LASTEXITCODE -ne 0) { throw 'Museum migration failed.' }
+   npm.cmd run setup:supabase
+   if ($LASTEXITCODE -ne 0) { throw 'Supabase setup failed.' }
    npm.cmd run db:seed
    ```
 
-   Run `npm.cmd run setup:supabase` once as well if the bucket and table permissions have not been created for this project.
-4. In Supabase → **Authentication** → **URL Configuration**, set the **Site URL** to your production address and add `https://your-domain/auth/callback` to the **Redirect URLs**.
-5. Deploy. Visit `/studio` and sign in with one of the two guest addresses to confirm the production redirect works.
+3. Configure custom SMTP for production magic links. Supabase's default sender is limited to project team addresses. In each Supabase project's **Authentication → URL Configuration**, set **Site URL** to the appropriate origin and add the exact `/auth/callback` URL for the host you will test. [Supabase SMTP](https://supabase.com/docs/guides/auth/auth-smtp) · [Redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls)
+4. Verify a Vercel Preview of the release branch with placeholder content before merging into the production branch or promoting the deployment.
 
-6. After both of you have signed in once, close public sign-ups in Supabase → **Authentication** → **Providers** → **Email** by turning off **Allow new users to sign up**. The museum still refuses any other address, but this step stops Supabase from creating stray accounts through the sign-in form.
+   - Open `/` and `/studio` in a signed-out window. Confirm they show sign-in, that `/api/me`, `/api/collection`, and `/api/studio` return `401`, and that an unsigned storage object URL denies access.
+   - With the two staging accounts, check the magic-link callback, the second guest's sign-in, and the pause cover. Confirm paused collection and studio requests return `423` while the owner retains access.
+   - In the studio, upload a placeholder photo, open it from the New Wing and photo index, hide it, then delete it. Save a placeholder letter and open it from both routes. On the intended iPhone, complete a walkthrough in portrait and landscape and check responsiveness with the New Wing populated.
 
-The browser only ever receives `VITE_*` values. The Prisma connection strings and `SUPABASE_SECRET_KEY` stay on the serverless functions. Display URLs are signed for six hours, so a reload always asks the API for fresh ones.
+5. Promote after the preview checks pass. Recheck the production domain, callback, and signed-out access before adding personal material. After both guests have signed in once, turn off **Allow new users to sign up** in Supabase. Keep the previous verified production deployment available for rollback when there is one. [Vercel promotion and rollback](https://vercel.com/docs/deployments/promote-preview-to-production)
 
 ## Exhibits and models
 

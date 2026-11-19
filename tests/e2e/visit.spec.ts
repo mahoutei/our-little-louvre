@@ -116,6 +116,7 @@ test.describe('phone controls', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
   test('two thumbs can move and look, and lifting both stops the view', async ({ page, context }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
     await takeBrassKey(page);
     const joystick = page.getByTestId('joystick');
@@ -139,7 +140,6 @@ test.describe('phone controls', () => {
     const released = await page.screenshot({ clip });
     await page.waitForTimeout(400);
     expect((await page.screenshot({ clip })).equals(released)).toBe(true);
-    await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.getByRole('button', { name: 'Go to pyramid door' }).tap();
     await page.getByRole('button', { name: 'Use brass key' }).tap();
     await expect(page.getByRole('heading', { name: 'The Gallery of Us' })).toBeVisible();
