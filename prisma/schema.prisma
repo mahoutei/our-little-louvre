@@ -1,0 +1,76 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  OWNER
+  PARTNER
+}
+
+enum Origin {
+  ORIGINAL
+  WING
+}
+
+model Member {
+  id        String    @id @default(cuid())
+  authId    String?   @unique
+  email     String    @unique
+  name      String
+  role      Role      @default(PARTNER)
+  exhibits  Exhibit[]
+  letters   Letter[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Exhibit {
+  id         String   @id @default(cuid())
+  slug       String   @unique
+  anchor     String?  @unique
+  origin     Origin   @default(WING)
+  title      String
+  caption    String
+  alt        String
+  dateLabel  String?
+  imagePath  String
+  thumbPath  String
+  width      Int?
+  height     Int?
+  published  Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  alleyIndex Int?
+  slotIndex  Int?
+  authorId   String?
+  author     Member?  @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([alleyIndex, slotIndex])
+  @@index([origin, sortOrder])
+  @@index([origin, alleyIndex, slotIndex])
+}
+
+model DiscardedUpload {
+  path String @id
+}
+
+model Letter {
+  id         String   @id @default(cuid())
+  title      String   @default("A Letter for You")
+  paragraphs String[]
+  active     Boolean  @default(true)
+  authorId   String?
+  author     Member?  @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([active])
+}

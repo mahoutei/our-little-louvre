@@ -1,5 +1,12 @@
 node_modules/
 dist/
+dist-demo/
+.env
+.env.*
+!.env.example
+# The private letter is seeded into Supabase and is not part of the public repo.
+/prisma/letter.json
+.vercel/
 .museum-tools/
 .museum-preview/
 playwright-report/

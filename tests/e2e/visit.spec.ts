@@ -77,6 +77,8 @@ test('a failed courtyard load can be retried without reopening the invitation', 
 });
 
 test('the rendered gallery is walkable and the finale opens in place', async ({ page }) => {
+  // Software WebGL renders at a low frame rate; the finale is roughly 30 m from the entrance.
+  test.setTimeout(120_000);
   await page.goto('/');
   await takeBrassKey(page);
   const goToDoor = page.getByRole('button', { name: 'Go to pyramid door' });
@@ -93,7 +95,7 @@ test('the rendered gallery is walkable and the finale opens in place', async ({ 
   await expect.poll(() => page.evaluate(() => document.pointerLockElement)).toBeNull();
   await page.keyboard.down('w');
   const inspect = page.getByRole('button', { name: 'The Story Is Still Being Written' });
-  try { await expect(inspect).toBeVisible({ timeout: 38_000 }); }
+  try { await expect(inspect).toBeVisible({ timeout: 75_000 }); }
   finally { await page.keyboard.up('w'); }
   const box = (await inspect.boundingBox())!;
   const touch = { pointerType: 'touch', pointerId: 1, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2 };
@@ -114,6 +116,7 @@ test.describe('phone controls', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
   test('two thumbs can move and look, and lifting both stops the view', async ({ page, context }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
     await takeBrassKey(page);
     const joystick = page.getByTestId('joystick');
@@ -137,7 +140,6 @@ test.describe('phone controls', () => {
     const released = await page.screenshot({ clip });
     await page.waitForTimeout(400);
     expect((await page.screenshot({ clip })).equals(released)).toBe(true);
-    await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.getByRole('button', { name: 'Go to pyramid door' }).tap();
     await page.getByRole('button', { name: 'Use brass key' }).tap();
     await expect(page.getByRole('heading', { name: 'The Gallery of Us' })).toBeVisible();

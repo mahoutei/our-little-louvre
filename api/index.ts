@@ -1,0 +1,6 @@
+import { handle } from '@hono/vercel';
+import { app } from '../server/app';
+
+export const config = { maxDuration: 30 };
+
+export default { fetch: handle(app) };

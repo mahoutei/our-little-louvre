@@ -3,7 +3,8 @@ import architecture from './architecture.json';
 export type Point = { x: number; z: number };
 export type Pose = Point & { yaw: number; pitch: number };
 export type Wall = { minX: number; maxX: number; minZ: number; maxZ: number };
-export type Room = 'courtyard' | 'gallery';
+export type Room = 'courtyard' | 'gallery' | 'wing';
+export type BuiltRoom = Exclude<Room, 'wing'>;
 
 const wall = (minX: number, maxX: number, minZ: number, maxZ: number): Wall => ({ minX, maxX, minZ, maxZ });
 export const { pyramid, hall } = architecture;
@@ -58,7 +59,12 @@ export const gallery = {
   ],
 };
 
-export const rooms = { courtyard, gallery };
+export const rooms: Record<BuiltRoom, { spawn: Pose; walls: Wall[] }> = { courtyard, gallery };
+
+/** Standing in the alcove, facing back down the main hall. */
+export const galleryReturnPose: Pose = { x: 0, z: hall.backZ + 2.6, yaw: Math.PI, pitch: 0.02 };
+
+export const galleryBackZ = hall.backZ;
 
 export function isAtEntrance({ x, z }: Point) {
   return Math.abs(x) <= pyramid.doorHalfWidth && z <= entranceZ + 2.65 && z >= entranceZ;

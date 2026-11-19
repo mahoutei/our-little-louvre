@@ -6,7 +6,7 @@ const example = () => ({
     id: `photo-${i}`, anchor: `EXHIBIT_${i}`, title: 'Memory', caption: 'A short story',
     alt: 'Two coffee cups', thumbnailUrl: '/content/photo-small.webp', imageUrl: '/content/photo.webp',
   })),
-  finale: { exhibitId: 'photo-7', letterParagraphs: ['Dear you,', 'See you soon.'] },
+  finale: { exhibitId: 'photo-7', letterTitle: 'A Letter for You', letterParagraphs: ['Dear you,', 'See you soon.'] },
 });
 
 describe('exhibit manifest', () => {
@@ -16,6 +16,18 @@ describe('exhibit manifest', () => {
     const result = parseManifest(data);
     expect(result.exhibits[0].id).toBe('photo-7');
     expect(result.finale.exhibitId).toBe('photo-7');
+  });
+
+  it('keeps the saved letter title', () => {
+    const data = example();
+    data.finale.letterTitle = 'The long way home';
+    expect(parseManifest(data).finale.letterTitle).toBe('The long way home');
+  });
+
+  it('falls back to the default letter title for an older manifest', () => {
+    const data = example();
+    const { letterTitle, ...finale } = data.finale;
+    expect(parseManifest({ ...data, finale }).finale.letterTitle).toBe('A Letter for You');
   });
 
   it('rejects a missing finale exhibit', () => {
