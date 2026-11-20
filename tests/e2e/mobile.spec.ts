@@ -2,6 +2,40 @@ import { expect, test } from '@playwright/test';
 
 test.use({ viewport: { width: 320, height: 568 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
 
+test('the signed-in phone header leaves scene captions clear at each width and after rotation', async ({ page, context }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open the envelope' }).tap();
+  await page.getByRole('button', { name: 'Take the brass key' }).tap();
+  const caption = page.locator('.scene-caption');
+  await expect(caption).toBeVisible();
+  // Demo mode omits the authenticated navigation link that caused the overlap.
+  await page.locator('.masthead-actions').evaluate((nav) => {
+    const link = document.createElement('a');
+    link.className = 'masthead-link masthead-link--quiet';
+    link.href = '/studio';
+    link.textContent = 'Private studio';
+    nav.append(link);
+  });
+  await page.evaluate(() => document.fonts.ready);
+  const cdp = await context.newCDPSession(page);
+  for (const width of [320, 390, 430, 667]) {
+    const landscape = width === 667;
+    await page.setViewportSize({ width, height: landscape ? 375 : 844 });
+    await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: landscape
+      ? { top: 0, right: 44, bottom: 21, left: 44 }
+      : { top: 44, right: 0, bottom: 34, left: 0 } });
+    await expect.poll(async () => {
+      const header = (await page.locator('.masthead').boundingBox())!;
+      return (await caption.boundingBox())!.y - (header.y + header.height);
+    }, { message: `Scene caption clears the signed-in header at ${width}px` }).toBeGreaterThanOrEqual(0);
+    const studio = (await page.getByRole('link', { name: 'Private studio' }).boundingBox())!;
+    expect(studio.height).toBeGreaterThanOrEqual(44);
+    expect(studio.width).toBeGreaterThanOrEqual(44);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  }
+});
+
 test('phone controls clear the notch, stay reachable, and fit after rotation', async ({ page, context }) => {
   const cdp = await context.newCDPSession(page);
   await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 44, right: 0, bottom: 34, left: 0 } });

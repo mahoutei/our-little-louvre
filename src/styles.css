@@ -191,6 +191,12 @@ kbd { display: inline-grid; place-items: center; min-width: 1.14rem; height: 1.2
   .exhibit-dialog:not(.exhibit-dialog--letter) .exhibit-copy { padding-top: 3rem; }
 }
 
+@media (max-width: 455px) {
+  .app--museum, .walkthrough { --scene-header-height: calc(89px + 0.45rem); }
+  .app--museum .masthead { row-gap: 0; }
+  .app--museum .masthead-actions { flex-basis: 100%; }
+}
+
 @media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
   .button, .photo-card { transition: translate 150ms ease-out, scale 100ms ease-out, background-color 150ms ease-out, border-color 150ms ease-out; }
   .button svg { transition: translate 150ms ease-out; }
