@@ -9,7 +9,7 @@ export function ExhibitPanel({ exhibit, letter, letterTitle, startWithLetter, on
   const dialog = useRef<HTMLDialogElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const title = useRef<HTMLHeadingElement>(null);
-  const [showLetter, setShowLetter] = useState(Boolean(startWithLetter));
+  const [showLetter, setShowLetter] = useState(Boolean(startWithLetter || (letter && !exhibit.published)));
   const [imageSource, setImageSource] = useState<string | undefined>(exhibit.imageUrl);
 
   useMuseumMotion(dialog, () => {
@@ -45,7 +45,7 @@ export function ExhibitPanel({ exhibit, letter, letterTitle, startWithLetter, on
             <Icon name="letter" size={30} />
             <h2 id="exhibit-title" ref={title} tabIndex={-1}>{letterTitle ?? 'A Letter for You'}</h2>
             {letter.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
-            <button className="button button--outline" onClick={() => setShowLetter(false)}><Icon name="back" /> Back to photograph</button>
+            {exhibit.published && <button className="button button--outline" onClick={() => setShowLetter(false)}><Icon name="back" /> Back to photograph</button>}
           </div>
         ) : (
           <>

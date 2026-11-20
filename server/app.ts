@@ -9,7 +9,7 @@ import { allowedEmailResult, memberView, pauseMessageFor, requireMember, require
 import { env } from './env.js';
 import { ApiError, readJson } from './http.js';
 import { prisma } from './prisma.js';
-import { buildCollection, buildStudioData, readLetter, removeStoragePaths } from './serialize.js';
+import { buildCollection, buildStudioData, isPrivatePhotoPath, readLetter, removeStoragePaths } from './serialize.js';
 import { supabaseAdmin } from './supabase.js';
 
 const app = new Hono<AppBindings>().basePath('/api');
@@ -20,25 +20,29 @@ const IMAGE_EXTENSION: Record<string, string> = {
   'image/png': 'png',
 };
 const UPLOAD_TYPES = new Set<string>(UPLOAD_IMAGE_TYPES);
-const WING_LOCK = 771302;
+const EXHIBIT_LOCK = 771302;
 const PATH_PATTERN = /^([a-zA-Z0-9_-]{6,64})\/([a-f0-9-]{36})-(full|thumb)\.(webp|jpg|jpeg|png)$/;
 
-function withWingLock<T>(run: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+function withExhibitLock<T>(run: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
   return prisma.$transaction(async (tx) => {
     // pg_advisory_xact_lock returns void, which Prisma cannot deserialize.
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${WING_LOCK})`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${EXHIBIT_LOCK})`;
     return run(tx);
   }, { isolationLevel: 'ReadCommitted' });
 }
 
-async function retireUnattachedUploads(tx: Prisma.TransactionClient, paths: string[]): Promise<string[]> {
-  const candidates = [...new Set(paths.filter(Boolean))];
-  if (!candidates.length) return [];
+async function attachedUploadPaths(tx: Prisma.TransactionClient, paths: string[]) {
   const exhibits = await tx.exhibit.findMany({
-    where: { OR: [{ imagePath: { in: candidates } }, { thumbPath: { in: candidates } }] },
+    where: { OR: [{ imagePath: { in: paths } }, { thumbPath: { in: paths } }] },
     select: { imagePath: true, thumbPath: true },
   });
-  const attached = new Set(exhibits.flatMap(({ imagePath, thumbPath }) => [imagePath, thumbPath]));
+  return new Set(exhibits.flatMap(({ imagePath, thumbPath }) => [imagePath, thumbPath]));
+}
+
+async function retireUnattachedUploads(tx: Prisma.TransactionClient, paths: string[]): Promise<string[]> {
+  const candidates = [...new Set(paths.filter(isPrivatePhotoPath))];
+  if (!candidates.length) return [];
+  const attached = await attachedUploadPaths(tx, candidates);
   const retired = candidates.filter((path) => !attached.has(path));
   if (retired.length) {
     await tx.discardedUpload.createMany({
@@ -58,7 +62,7 @@ async function removeRetiredUploads(paths: string[]): Promise<void> {
 async function discardUnattachedUploads(paths: string[]): Promise<void> {
   if (!paths.length) return;
   // Keep paths ineligible for new exhibits even if storage removal is slow or fails.
-  const retired = await withWingLock((tx) => retireUnattachedUploads(tx, paths));
+  const retired = await withExhibitLock((tx) => retireUnattachedUploads(tx, paths));
   await removeRetiredUploads(retired);
 }
 
@@ -87,6 +91,15 @@ async function verifyUploaded(authId: string, imagePath: string, thumbPath: stri
   const names = new Set((data ?? []).map((entry) => entry.name));
   const missing = [imagePath, thumbPath].filter((path) => !names.has(path.slice(authId.length + 1)));
   if (missing.length) throw new ApiError(400, 'The photograph did not finish uploading. Try again.');
+}
+
+async function verifyNewUpload(tx: Prisma.TransactionClient, authId: string, imagePath: string, thumbPath: string) {
+  const paths = [imagePath, thumbPath];
+  const discarded = await tx.discardedUpload.findFirst({ where: { path: { in: paths } }, select: { path: true } });
+  if (discarded) throw new ApiError(409, 'That upload was discarded. Upload the photograph again.');
+  const attached = await attachedUploadPaths(tx, paths);
+  if (paths.some((path) => attached.has(path))) throw new ApiError(409, 'That upload is already in another frame.');
+  await verifyUploaded(authId, imagePath, thumbPath);
 }
 
 function fieldsOrThrow(input: Partial<NewExhibitInput>) {
@@ -196,10 +209,10 @@ app.post('/exhibits', async (c) => {
   const thumb = parseUploadPath(body.thumbPath, authId);
   const paths = [image.path, thumb.path];
 
-  let createdSlot: WingSlot | null;
+  let createdSlot: WingSlot;
   try {
     const fields = fieldsOrThrow(body as Partial<NewExhibitInput>);
-    createdSlot = await withWingLock(async (tx) => {
+    createdSlot = await withExhibitLock(async (tx) => {
       const existing = await tx.exhibit.findMany({
         where: { origin: 'WING' },
         select: { alleyIndex: true, slotIndex: true, imagePath: true, thumbPath: true },
@@ -207,14 +220,7 @@ app.post('/exhibits', async (c) => {
       const hung = existing.find((exhibit) => exhibit.imagePath === image.path && exhibit.thumbPath === thumb.path);
       const { alleyIndex, slotIndex } = hung ?? {};
       const retry = alleyIndex != null && slotIndex != null;
-      if (!retry) {
-        const discarded = await tx.discardedUpload.findFirst({
-          where: { path: { in: paths } },
-          select: { path: true },
-        });
-        if (discarded) return null;
-        await verifyUploaded(authId, image.path, thumb.path);
-      }
+      if (!retry) await verifyNewUpload(tx, authId, image.path, thumb.path);
       const target = retry
         ? { alleyIndex, slotIndex, newAlley: false }
         : nextWingSlot(existing, env.alleyCapacity, env.maxAlleys);
@@ -252,42 +258,69 @@ app.post('/exhibits', async (c) => {
     });
     throw error;
   }
-  if (!createdSlot) throw new ApiError(409, 'That upload was discarded. Upload the photograph again.');
-
   return c.json({ collection: await buildCollection(member, true), slot: createdSlot });
 });
 
 app.patch('/exhibits/:id', async (c) => {
   const member = c.get('member');
-  const existing = await prisma.exhibit.findUnique({ where: { id: c.req.param('id') } });
-  if (!existing) throw new ApiError(404, 'That photograph is not in the collection.');
   const body = await readJson<ExhibitPatch & Record<string, unknown>>(c);
-  const fields = fieldsOrThrow({
-    title: body.title ?? existing.title,
-    caption: body.caption ?? existing.caption,
-    alt: body.alt ?? existing.alt,
-    dateLabel: body.dateLabel ?? existing.dateLabel ?? '',
-  });
-  const data = {
-    title: fields.title,
-    caption: fields.caption,
-    alt: fields.alt,
-    dateLabel: fields.dateLabel ?? null,
-    ...(existing.origin === 'WING' && typeof body.published === 'boolean' ? { published: body.published } : {}),
-  };
-  await prisma.exhibit.update({ where: { id: existing.id }, data });
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new ApiError(400, 'Expected photograph changes.');
+  const { authId } = member;
+  const replacement = body.replacement;
+  let files: { imagePath: string; thumbPath: string; width: number | null; height: number | null } | undefined;
+  if (replacement !== undefined) {
+    if (!authId) throw new ApiError(409, 'Your account is still being prepared. Sign out and back in.');
+    if (!replacement || typeof replacement !== 'object' || Array.isArray(replacement)) {
+      throw new ApiError(400, 'Choose a replacement photograph.');
+    }
+    files = {
+      imagePath: parseUploadPath(replacement.imagePath, authId).path,
+      thumbPath: parseUploadPath(replacement.thumbPath, authId).path,
+      width: validDimension(replacement.width) ?? null,
+      height: validDimension(replacement.height) ?? null,
+    };
+  }
+
+  let retired: string[];
+  try {
+    retired = await withExhibitLock(async (tx) => {
+      const existing = await tx.exhibit.findUnique({ where: { id: c.req.param('id') } });
+      if (!existing) throw new ApiError(404, 'That photograph is not in the collection.');
+      const fields = fieldsOrThrow({
+        title: body.title ?? existing.title,
+        caption: body.caption ?? existing.caption,
+        alt: body.alt ?? existing.alt,
+        dateLabel: body.dateLabel ?? existing.dateLabel ?? '',
+      });
+      const newFiles = files && (files.imagePath !== existing.imagePath || files.thumbPath !== existing.thumbPath) ? files : undefined;
+      if (newFiles && authId) await verifyNewUpload(tx, authId, newFiles.imagePath, newFiles.thumbPath);
+      const published = existing.origin === 'ORIGINAL' && files ? true
+        : existing.origin === 'WING' && typeof body.published === 'boolean' ? body.published : existing.published;
+      await tx.exhibit.update({ where: { id: existing.id }, data: { ...fields, dateLabel: fields.dateLabel ?? null, ...files, published } });
+      return newFiles ? retireUnattachedUploads(tx, [existing.imagePath, existing.thumbPath]) : [];
+    });
+  } catch (error) {
+    if (files) await discardUnattachedUploads([files.imagePath, files.thumbPath]).catch((cleanupError: unknown) => {
+      console.error('Could not clean up replacement files.', cleanupError);
+    });
+    throw error;
+  }
+  await removeRetiredUploads(retired);
   return c.json({ collection: await buildCollection(member, true) });
 });
 
 app.delete('/exhibits/:id', async (c) => {
   const member = c.get('member');
-  const retired = await withWingLock(async (tx) => {
+  const retired = await withExhibitLock(async (tx) => {
     const existing = await tx.exhibit.findUnique({ where: { id: c.req.param('id') } });
     if (!existing) throw new ApiError(404, 'That photograph is not in the collection.');
     if (existing.origin === 'ORIGINAL') {
-      throw new ApiError(400, 'The original collection is part of the building and cannot be removed.');
+      await tx.exhibit.update({ where: { id: existing.id }, data: {
+        imagePath: '', thumbPath: '', width: null, height: null, published: false,
+      } });
+    } else {
+      await tx.exhibit.delete({ where: { id: existing.id } });
     }
-    await tx.exhibit.delete({ where: { id: existing.id } });
     return retireUnattachedUploads(tx, [existing.imagePath, existing.thumbPath]);
   });
   await removeRetiredUploads(retired);

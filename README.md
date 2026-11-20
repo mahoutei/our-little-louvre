@@ -8,7 +8,7 @@ A phone-first, first-person museum for two. Enter through the blue-hour courtyar
 - The **Private studio** at `/studio` is where either of you can upload a photograph, edit its label, remove it, rewrite the letter, and change the name shown on your labels.
 - New photographs hang in the **New Wing**, through the spotlit arch on the right just before the letter exhibit. The same photos are available under **Browse photos**. New photos fill free frames before another room opens, up to six frames per room and 24 rooms.
 - Photographs live in a private Supabase Storage bucket. The API issues short-lived signed URLs for display after it has checked your session.
-- The ten original exhibits keep their baked Blender frames. Their labels can still be edited in the studio.
+- In Private studio, use **Edit photo** on any original or New Wing photograph to update its title, story, date, description, or image. **Remove** clears an original frame so you can fill it again with **Add photo**. The final letter remains available. Removing a New Wing photograph frees its slot for the next upload.
 
 ## Run locally
 
@@ -54,7 +54,7 @@ You will need Node 22 LTS or newer and a [Supabase](https://supabase.com) projec
    npm.cmd run db:seed
    ```
 
-   `db:seed` is safe to re-run. It creates the ten originals and an active letter the first time, and never overwrites labels or letters that have since been edited in the studio. On later deploys use `npm.cmd run db:deploy` instead of `db:migrate`.
+   `db:seed` is safe to re-run. It creates the ten originals and an active letter the first time, and preserves subsequent label edits, replacements, empty original frames, and letter edits. On later deploys use `npm.cmd run db:deploy` instead of `db:migrate`.
 
 5. In Supabase, open **Authentication** → **URL Configuration** and set:
 
@@ -97,8 +97,8 @@ The masthead’s **Private studio** link opens `/studio`. Both members have the 
 - **Hang a memory** — choose or drop a photograph. The browser rotates, downsizes, and re-encodes it, then uploads the display copy and thumbnail directly to the private bucket through one-use signed URLs. The API verifies the upload before creating the exhibit.
 - **The letter** — edit the title and up to twelve paragraphs. The saved letter replaces the final exhibit’s letter for both of you.
 - **Name on the label** — set the name shown on the labels you hang.
-- **The New Wing** — edit a photograph’s title, date, story, and description; hide it from the museum without deleting it; or remove it and free its frame. A hidden photograph keeps its frame, but its label and image are not sent to the museum.
-- **The Gallery of Us** — edit the labels of the ten baked originals.
+- **The New Wing** — edit the photo or its label, hide it from the visit, or remove it to free its frame. A hidden photo keeps its frame for later.
+- **The Gallery of Us** — edit, replace, or clear the photo in any original frame. Use **Add photo** to fill an empty frame.
 
 ### Keeping the surprise
 
@@ -155,7 +155,7 @@ The repository includes `vercel.json` and a serverless Hono entry point at `api/
 
 ## Exhibits and models
 
-- The ten baked originals and the demo letter come from `public/content/exhibits.json`. The same file seeds the private database. Each photograph has a frame thumbnail and a larger display copy; IDs and anchor names are unique, and ordering follows the manifest. Uploaded photographs use the procedural New Wing instead of a Blender anchor.
+- The ten baked originals and the demo letter come from `public/content/exhibits.json`, which also seeds the private database. Each photograph has a frame thumbnail and a display copy. Replacements keep their original Blender anchor or New Wing slot. New photographs added through **Hang a memory** use the procedural New Wing.
 - Blender generates both architectural shells from `scripts/model-museum.py`. The runtime uses the same room dimensions from `src/museum/architecture.json` for collision. The gallery light map uses the models’ second UV set, and the courtyard uses a reflection panorama rendered from the same architecture. The browser-ready GLBs and maps are already in `public/models` and `public/materials`.
 - The New Wing is generated at runtime by `src/museum/Wing.tsx` and `src/museum/wingLayout.ts`; there is no additional Blender export for it.
 - To regenerate the baked models, use Blender 4.5 LTS and run the commands below from the repository root. Supply Blender’s executable path if it is outside `PATH`.

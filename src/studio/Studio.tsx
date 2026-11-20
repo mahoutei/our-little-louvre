@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent, ReactNode } from 'react';
 import { LIMITS, STORAGE_BUCKET } from '../../shared/config';
-import type { Collection, ExhibitBase, ExhibitFields, LetterView, MemberView, StudioData } from '../../shared/types';
+import type { Collection, ExhibitBase, ExhibitFields, ExhibitPatch, LetterView, MemberView, PhotoUpload, StudioData } from '../../shared/types';
 import { fieldsFrom, validateExhibitFields } from '../../shared/validation';
 import { api, ApiError } from '../api/client';
 import { demoCollection } from '../api/demo';
@@ -14,8 +14,7 @@ import { describeBytes, prepareImage } from './image';
 import type { PreparedImage } from './image';
 import './studio.css';
 
-type Notice = { tone: 'good' | 'bad'; text: string } | null;
-type EditPatch = ExhibitFields & { published?: boolean };
+type Notice = { tone: 'good' | 'bad'; text: string; exhibitId?: string } | null;
 
 const EMPTY_FIELDS: ExhibitFields = { title: '', caption: '', alt: '', dateLabel: '' };
 
@@ -24,7 +23,7 @@ function statsOf(collection: Collection): StudioData['stats'] {
   return {
     originals: collection.manifest.exhibits.length,
     wing: collection.wing.total,
-    published: collection.manifest.exhibits.length + wing.filter((exhibit) => exhibit.published).length,
+    published: [...collection.manifest.exhibits, ...wing].filter((exhibit) => exhibit.published).length,
     alleys: collection.wing.alleys.length,
     capacity: collection.wing.capacity,
   };
@@ -32,6 +31,62 @@ function statsOf(collection: Collection): StudioData['stats'] {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong in the museum office.';
+}
+
+function usePhotoDraft() {
+  const [draft, setDraft] = useState<{ preview: string; prepared?: PreparedImage; error?: string }>();
+  const activeUrl = useRef<string | undefined>(undefined);
+
+  const releaseUrl = useCallback(() => {
+    if (activeUrl.current) URL.revokeObjectURL(activeUrl.current);
+    activeUrl.current = undefined;
+  }, []);
+
+  useEffect(() => releaseUrl, [releaseUrl]);
+
+  async function choose(file?: File) {
+    if (!file) return;
+    releaseUrl();
+    const preview = URL.createObjectURL(file);
+    activeUrl.current = preview;
+    setDraft({ preview });
+    try {
+      const prepared = await prepareImage(file);
+      if (activeUrl.current === preview) setDraft({ preview, prepared });
+    } catch (error) {
+      if (activeUrl.current === preview) setDraft({ preview, error: messageOf(error) });
+    }
+  }
+
+  function reset() {
+    releaseUrl();
+    setDraft(undefined);
+  }
+
+  return { ...draft, preparing: Boolean(draft && !draft.prepared && !draft.error), choose, reset };
+}
+
+async function uploadPhoto(token: string, prepared: PreparedImage): Promise<PhotoUpload> {
+  if (!supabase) throw new Error('The photograph store is not configured.');
+  const { files } = await api.createUploads(token, [
+    { kind: 'full', contentType: prepared.full.type },
+    { kind: 'thumb', contentType: prepared.thumb.type },
+  ]);
+  try {
+    const full = files.find((file) => file.kind === 'full');
+    const thumb = files.find((file) => file.kind === 'thumb');
+    if (!full || !thumb) throw new Error('The upload was not prepared completely. Try again.');
+    for (const file of [full, thumb]) {
+      const body = file === full ? prepared.full : prepared.thumb;
+      const { error } = await supabase.storage.from(STORAGE_BUCKET)
+        .uploadToSignedUrl(file.path, file.token, body, { contentType: body.type });
+      if (error) throw new Error(`The ${file === full ? 'photograph' : 'thumbnail'} could not be uploaded: ${error.message}`);
+    }
+    return { imagePath: full.path, thumbPath: thumb.path, width: prepared.width, height: prepared.height };
+  } catch (error) {
+    await api.discardUploads(token, files.map(({ path }) => path)).catch(() => undefined);
+    throw error;
+  }
 }
 
 function Field({ id, label, hint, error, children }: {
@@ -62,51 +117,19 @@ function UploadForm({ busy, onSubmit }: {
   busy: boolean;
   onSubmit: (input: { fields: ExhibitFields; prepared: PreparedImage; reset: () => void }) => Promise<void>;
 }) {
-  const [file, setFile] = useState<File>();
-  const [prepared, setPrepared] = useState<PreparedImage>();
-  const [preview, setPreview] = useState<string>();
-  const [preparing, setPreparing] = useState(false);
+  const photo = usePhotoDraft();
+  const { prepared, preview, preparing } = photo;
   const [fields, setFields] = useState<ExhibitFields>(EMPTY_FIELDS);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [drag, setDrag] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  const previewUrl = useRef<string | undefined>(undefined);
-  const prepareRun = useRef(0);
-
-  useEffect(() => () => { if (previewUrl.current) URL.revokeObjectURL(previewUrl.current); }, []);
-
-  async function choose(next?: File) {
-    if (!next) return;
-    if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
-    const run = ++prepareRun.current;
-    const url = URL.createObjectURL(next);
-    previewUrl.current = url;
-    setPreview(url);
-    setFile(next);
-    setPrepared(undefined);
-    setPreparing(true);
+  function choose(file?: File) {
     setErrors({});
-    try {
-      const result = await prepareImage(next);
-      if (run === prepareRun.current) setPrepared(result);
-    } catch (error) {
-      if (run === prepareRun.current) {
-        setFile(undefined);
-        setErrors({ file: messageOf(error) });
-      }
-    } finally {
-      if (run === prepareRun.current) setPreparing(false);
-    }
+    void photo.choose(file);
   }
 
   function reset() {
-    ++prepareRun.current;
-    if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
-    previewUrl.current = undefined;
-    setPreview(undefined);
-    setFile(undefined);
-    setPrepared(undefined);
-    setPreparing(false);
+    photo.reset();
     setFields(EMPTY_FIELDS);
     setErrors({});
     if (input.current) input.current.value = '';
@@ -114,6 +137,7 @@ function UploadForm({ busy, onSubmit }: {
 
   function submit(event: FormEvent) {
     event.preventDefault();
+    if (busy) return;
     if (!prepared) {
       setErrors({ file: 'Choose a photograph first.' });
       return;
@@ -130,23 +154,23 @@ function UploadForm({ busy, onSubmit }: {
 
   return <form className="studio-upload" onSubmit={submit} noValidate>
     <div className={`studio-drop${drag ? ' studio-drop--over' : ''}${preview ? ' studio-drop--filled' : ''}`}
-      onDragOver={(event) => { event.preventDefault(); setDrag(true); }}
+      onDragOver={(event) => { event.preventDefault(); if (!busy) setDrag(true); }}
       onDragLeave={() => setDrag(false)}
-      onDrop={(event) => { event.preventDefault(); setDrag(false); void choose(event.dataTransfer.files[0]); }}>
+      onDrop={(event) => { event.preventDefault(); setDrag(false); if (!busy) choose(event.dataTransfer.files[0]); }}>
       {preview ? <img src={preview} alt="The photograph you chose" />
         : <div className="studio-drop-copy">
           <Icon name="collection" size={30} />
           <strong>Drop a photograph here</strong>
           <span>or choose one from your phone or computer</span>
         </div>}
-      <button type="button" className="button button--outline studio-file-button" onClick={() => input.current?.click()}>
+      <button type="button" className="button button--outline studio-file-button" disabled={busy} onClick={() => input.current?.click()}>
         {preview ? 'Choose another' : 'Choose a photograph'}
       </button>
-      <input ref={input} type="file" accept="image/*" hidden onChange={(event: ChangeEvent<HTMLInputElement>) => void choose(event.target.files?.[0])} />
+      <input ref={input} type="file" accept="image/*" hidden disabled={busy} onChange={(event: ChangeEvent<HTMLInputElement>) => choose(event.target.files?.[0])} />
     </div>
     {preparing && <p className="studio-hint" role="status">Preparing the photograph…</p>}
     {prepared && <p className="studio-hint studio-ready"><Icon name="key" size={15} /> Ready · {prepared.width} × {prepared.height} · {describeBytes(prepared.bytes)}</p>}
-    {errors.file && <p className="studio-field-error" role="alert">{errors.file}</p>}
+    {(photo.error || errors.file) && <p className="studio-field-error" role="alert">{photo.error ?? errors.file}</p>}
 
     <div className="studio-form-grid">
       <Field id="photo-title" label="Title" error={errors.title}>
@@ -167,17 +191,16 @@ function UploadForm({ busy, onSubmit }: {
         onChange={(event) => setFields((current) => ({ ...current, alt: event.target.value }))} />
     </Field>
 
-    <button className="button button--gold studio-submit" type="submit" disabled={busy || preparing || !file}>
+    <button className="button button--gold studio-submit" type="submit" disabled={busy || !prepared}>
       <Icon name="arrow" /> {busy ? 'Hanging the photograph…' : 'Hang this photograph'}
     </button>
   </form>;
 }
 
-function ExhibitEditor({ exhibit, wing, busy, onSave, onCancel }: {
+function ExhibitEditor({ exhibit, busy, onSave, onCancel }: {
   exhibit: ExhibitBase;
-  wing: boolean;
   busy: boolean;
-  onSave: (patch: EditPatch) => Promise<void>;
+  onSave: (patch: ExhibitPatch, photo?: PreparedImage) => Promise<void>;
   onCancel: () => void;
 }) {
   const [fields, setFields] = useState<ExhibitFields>({
@@ -188,37 +211,51 @@ function ExhibitEditor({ exhibit, wing, busy, onSave, onCancel }: {
   });
   const [published, setPublished] = useState(exhibit.published);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const photo = usePhotoDraft();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const wing = exhibit.origin === 'WING';
   function submit(event: FormEvent) {
     event.preventDefault();
+    if (busy || photo.preparing || photo.error) return;
     const next = fieldsFrom(fields);
     const found = validateExhibitFields(next);
     if (Object.keys(found).length) {
       setErrors(found as Record<string, string>);
       return;
     }
-    void onSave({ ...next, ...(wing ? { published } : {}) });
+    void onSave({ ...next, ...(wing ? { published } : {}) }, photo.prepared);
   }
   return <form className="studio-edit" onSubmit={submit} noValidate>
+    <Field id={`edit-photo-${exhibit.id}`} label={exhibit.published || wing ? 'Replace photograph' : 'Choose a photograph for this frame'} error={photo.error}>
+      <input id={`edit-photo-${exhibit.id}`} ref={fileInput} type="file" accept="image/*" disabled={busy}
+        onChange={(event) => void photo.choose(event.target.files?.[0])} />
+    </Field>
+    {photo.preparing && <p className="studio-hint" role="status">Preparing the photograph…</p>}
+    {photo.prepared && <img className="studio-thumb" src={photo.preview} alt="Replacement preview" />}
+    {photo.preview && <button className="studio-text-button" type="button" disabled={busy} onClick={() => {
+      photo.reset();
+      if (fileInput.current) fileInput.current.value = '';
+    }}>Clear selected file</button>}
     <div className="studio-form-grid">
       <Field id={`edit-title-${exhibit.id}`} label="Title" error={errors.title}>
-        <input id={`edit-title-${exhibit.id}`} value={fields.title} maxLength={80} required onChange={(event) => setFields((current) => ({ ...current, title: event.target.value }))} />
+        <input id={`edit-title-${exhibit.id}`} value={fields.title} maxLength={80} required disabled={busy} onChange={(event) => setFields((current) => ({ ...current, title: event.target.value }))} />
       </Field>
       <Field id={`edit-date-${exhibit.id}`} label="Date" error={errors.dateLabel}>
-        <input id={`edit-date-${exhibit.id}`} value={fields.dateLabel ?? ''} maxLength={60} onChange={(event) => setFields((current) => ({ ...current, dateLabel: event.target.value }))} />
+        <input id={`edit-date-${exhibit.id}`} value={fields.dateLabel ?? ''} maxLength={60} disabled={busy} onChange={(event) => setFields((current) => ({ ...current, dateLabel: event.target.value }))} />
       </Field>
     </div>
     <Field id={`edit-story-${exhibit.id}`} label="The story" error={errors.caption}>
-      <textarea id={`edit-story-${exhibit.id}`} value={fields.caption} rows={3} maxLength={600} required onChange={(event) => setFields((current) => ({ ...current, caption: event.target.value }))} />
+      <textarea id={`edit-story-${exhibit.id}`} value={fields.caption} rows={3} maxLength={600} required disabled={busy} onChange={(event) => setFields((current) => ({ ...current, caption: event.target.value }))} />
     </Field>
     <Field id={`edit-alt-${exhibit.id}`} label="Describe the photograph" error={errors.alt}>
-      <input id={`edit-alt-${exhibit.id}`} value={fields.alt} maxLength={240} required onChange={(event) => setFields((current) => ({ ...current, alt: event.target.value }))} />
+      <input id={`edit-alt-${exhibit.id}`} value={fields.alt} maxLength={240} required disabled={busy} onChange={(event) => setFields((current) => ({ ...current, alt: event.target.value }))} />
     </Field>
     {wing && <label className="studio-check">
-      <input type="checkbox" checked={published} onChange={(event) => setPublished(event.target.checked)} />
+      <input type="checkbox" checked={published} disabled={busy} onChange={(event) => setPublished(event.target.checked)} />
       <span>Show this photograph in the museum</span>
     </label>}
     <div className="studio-row-actions">
-      <button className="button button--gold" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</button>
+      <button className="button button--gold" type="submit" disabled={busy || photo.preparing || Boolean(photo.error)}>{busy ? 'Saving…' : 'Save changes'}</button>
       <button className="button button--outline" type="button" disabled={busy} onClick={onCancel}>Cancel</button>
     </div>
   </form>;
@@ -284,6 +321,7 @@ export function Studio() {
   const [busyId, setBusyId] = useState<string>();
   const [savingLetter, setSavingLetter] = useState(false);
   const [savingName, setSavingName] = useState(false);
+  const savingCollection = uploading || Boolean(busyId) || savingLetter;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -322,35 +360,12 @@ export function Studio() {
     setUploading(true);
     setNotice(null);
     let token: string | null = null;
-    let paths: string[] = [];
+    let photo: PhotoUpload | undefined;
     try {
       token = await getToken();
       if (!token) throw new Error('Your key has expired. Reload the page and sign in again.');
-      if (!supabase) throw new Error('The photograph store is not configured.');
-      const issued = await api.createUploads(token, [
-        { kind: 'full', contentType: input.prepared.full.type },
-        { kind: 'thumb', contentType: input.prepared.thumb.type },
-      ]);
-      paths = issued.files.map((file) => file.path);
-      for (const file of issued.files) {
-        const body = file.kind === 'full' ? input.prepared.full : input.prepared.thumb;
-        const { error } = await supabase.storage.from(STORAGE_BUCKET)
-          .uploadToSignedUrl(file.path, file.token, body, { contentType: body.type });
-        if (error) throw new Error(`The ${file.kind === 'full' ? 'photograph' : 'thumbnail'} could not be uploaded: ${error.message}`);
-      }
-      const full = issued.files.find((file) => file.kind === 'full');
-      const thumb = issued.files.find((file) => file.kind === 'thumb');
-      if (!full || !thumb) throw new Error('The upload was not prepared completely. Try again.');
-      // From here on the API owns these files. A late 5xx must not delete a
-      // photograph that was already hung.
-      paths = [];
-      const result = await api.createExhibit(token, {
-        ...input.fields,
-        imagePath: full.path,
-        thumbPath: thumb.path,
-        width: input.prepared.width,
-        height: input.prepared.height,
-      });
+      photo = await uploadPhoto(token, input.prepared);
+      const result = await api.createExhibit(token, { ...input.fields, ...photo });
       const collection = parseCollection(result.collection);
       applyCollection(collection);
       input.reset();
@@ -362,26 +377,30 @@ export function Studio() {
           : `${spot}. ${result.slot.remainingInAlley} frame${result.slot.remainingInAlley === 1 ? '' : 's'} left in this room.`,
       });
     } catch (error) {
-      if (token && paths.length) await api.discardUploads(token, paths).catch(() => undefined);
+      if (token && photo) await api.discardUploads(token, [photo.imagePath, photo.thumbPath]).catch(() => undefined);
       setNotice({ tone: 'bad', text: messageOf(error) });
     } finally {
       setUploading(false);
     }
   }
 
-  async function saveExhibit(id: string, patch: EditPatch) {
+  async function saveExhibit(id: string, patch: ExhibitPatch, photo?: PreparedImage) {
     if (demo) return;
     setBusyId(id);
     setNotice(null);
+    let token: string | null = null;
+    let replacement: PhotoUpload | undefined;
     try {
-      const token = await getToken();
+      token = await getToken();
       if (!token) throw new Error('Your key has expired. Reload the page and sign in again.');
-      const result = await api.updateExhibit(token, id, patch);
+      if (photo) replacement = await uploadPhoto(token, photo);
+      const result = await api.updateExhibit(token, id, { ...patch, replacement });
       applyCollection(parseCollection(result.collection));
       setEditingId(undefined);
-      setNotice({ tone: 'good', text: 'The label has been updated.' });
+      setNotice({ tone: 'good', exhibitId: id, text: photo ? 'The new photograph is in the same frame.' : 'The label has been updated.' });
     } catch (error) {
-      setNotice({ tone: 'bad', text: error instanceof ApiError && error.fields ? Object.values(error.fields).join(' ') : messageOf(error) });
+      if (token && replacement) await api.discardUploads(token, [replacement.imagePath, replacement.thumbPath]).catch(() => undefined);
+      setNotice({ tone: 'bad', exhibitId: id, text: error instanceof ApiError && error.fields ? Object.values(error.fields).join(' ') : messageOf(error) });
     } finally {
       setBusyId(undefined);
     }
@@ -398,12 +417,45 @@ export function Studio() {
       applyCollection(parseCollection(result.collection));
       setConfirmId(undefined);
       setEditingId(undefined);
-      setNotice({ tone: 'good', text: 'The photograph has been taken down. Its frame is ready for the next one.' });
+      setNotice({ tone: 'good', exhibitId: exhibit.origin === 'ORIGINAL' ? exhibit.id : undefined, text: exhibit.origin === 'ORIGINAL'
+        ? 'The photograph has been taken down. You can add a replacement to this frame in Private studio.'
+        : 'The photograph has been taken down. Its frame is ready for the next one.' });
     } catch (error) {
-      setNotice({ tone: 'bad', text: messageOf(error) });
+      setNotice({ tone: 'bad', exhibitId: exhibit.id, text: messageOf(error) });
     } finally {
       setBusyId(undefined);
     }
+  }
+
+  function exhibitRow(exhibit: ExhibitBase, location: string) {
+    const editing = editingId === exhibit.id;
+    const empty = exhibit.origin === 'ORIGINAL' && !exhibit.published;
+    const busy = busyId === exhibit.id;
+    return <li key={exhibit.id} className="studio-item">
+      <img className="studio-thumb" src={exhibit.thumbnailUrl} alt="" loading="lazy" />
+      <div className="studio-item-copy">
+        <p className="studio-item-where">{location}</p>
+        <h3>{exhibit.title}</h3>
+        <p>{exhibit.dateLabel ? `${exhibit.dateLabel} · ` : ''}{exhibit.caption}</p>
+        {exhibit.authorName && exhibit.origin === 'WING' && <p className="studio-byline">Hung by {exhibit.authorName}</p>}
+      </div>
+      {!demo && <div className="studio-item-actions">
+        <button className="button button--outline" type="button" disabled={savingCollection}
+          onClick={() => { setEditingId(editing ? undefined : exhibit.id); setConfirmId(undefined); }}>
+          {editing ? 'Close' : empty ? 'Add photo' : 'Edit photo'}
+        </button>
+        {!empty && (confirmId === exhibit.id ? <>
+          <button className="button button--danger" type="button" disabled={savingCollection}
+            onClick={() => void remove(exhibit)}>{busy ? 'Taking down…' : 'Remove it'}</button>
+          <button className="studio-text-button" type="button" disabled={savingCollection} onClick={() => setConfirmId(undefined)}>Keep it</button>
+        </> : <button className="studio-text-button" type="button" disabled={savingCollection}
+          onClick={() => { setConfirmId(exhibit.id); setEditingId(undefined); }}>Remove</button>)}
+      </div>}
+      {editing && <ExhibitEditor exhibit={exhibit} busy={savingCollection} onCancel={() => setEditingId(undefined)}
+        onSave={(patch, photo) => saveExhibit(exhibit.id, patch, photo)} />}
+      {notice?.exhibitId === exhibit.id && <p className={`studio-notice studio-notice--row studio-notice--${notice.tone}`}
+        role={notice.tone === 'bad' ? 'alert' : 'status'}>{notice.text}</p>}
+    </li>;
   }
 
   async function saveLetter(letter: { title: string; paragraphs: string[]; updatedAt: string }) {
@@ -489,7 +541,7 @@ export function Studio() {
         {demo && <p className="studio-demo-note" role="status">This is the public preview. The private studio is read-only until one of the two keys is used.</p>}
       </header>
 
-      {notice && <p className={`studio-notice studio-notice--${notice.tone}`} role={notice.tone === 'bad' ? 'alert' : 'status'}>{notice.text}</p>}
+      {notice && !notice.exhibitId && <p className={`studio-notice studio-notice--${notice.tone}`} role={notice.tone === 'bad' ? 'alert' : 'status'}>{notice.text}</p>}
 
       <div className="studio-columns">
         <section className="studio-panel" aria-labelledby="studio-upload-heading">
@@ -498,7 +550,7 @@ export function Studio() {
             <h2 id="studio-upload-heading">Hang a memory</h2>
           </div>
           {demo ? <p className="studio-empty">Sign in with one of the two private addresses to add photographs.</p>
-            : <UploadForm busy={uploading} onSubmit={upload} />}
+            : <UploadForm busy={savingCollection} onSubmit={upload} />}
         </section>
 
         <section className="studio-panel" aria-labelledby="studio-letter-heading">
@@ -507,7 +559,7 @@ export function Studio() {
             <h2 id="studio-letter-heading">The letter</h2>
             <p>The words at the end of the gallery. Only the two of you will read them.</p>
           </div>
-          <LetterEditor key={data.letter.updatedAt} letter={data.letter} readOnly={demo} busy={savingLetter} onSave={saveLetter} />
+          <LetterEditor key={data.letter.updatedAt} letter={data.letter} readOnly={demo} busy={savingCollection} onSave={saveLetter} />
         </section>
       </div>
 
@@ -529,26 +581,8 @@ export function Studio() {
           </div>
         </div>
         {wingPhotos.length ? <ul className="studio-list">
-          {wingPhotos.map((exhibit) => <li key={exhibit.id} className="studio-item">
-            <img className="studio-thumb" src={exhibit.thumbnailUrl} alt="" loading="lazy" />
-            <div className="studio-item-copy">
-              <p className="studio-item-where">Room {exhibit.alleyIndex + 1} · Frame {exhibit.slotIndex + 1}{exhibit.published ? '' : ' · hidden'}</p>
-              <h3>{exhibit.title}</h3>
-              <p>{exhibit.dateLabel ? `${exhibit.dateLabel} · ` : ''}{exhibit.caption}</p>
-              {exhibit.authorName && <p className="studio-byline">Hung by {exhibit.authorName}</p>}
-            </div>
-            {!demo && <div className="studio-item-actions">
-              <button className="button button--outline" type="button" disabled={busyId === exhibit.id} onClick={() => { setEditingId(editingId === exhibit.id ? undefined : exhibit.id); setConfirmId(undefined); }}>
-                {editingId === exhibit.id ? 'Close' : 'Edit'}
-              </button>
-              {confirmId === exhibit.id ? <>
-                <button className="button button--danger" type="button" disabled={busyId === exhibit.id} onClick={() => void remove(exhibit)}>{busyId === exhibit.id ? 'Taking down…' : 'Remove it'}</button>
-                <button className="studio-text-button" type="button" onClick={() => setConfirmId(undefined)}>Keep it</button>
-              </> : <button className="studio-text-button" type="button" onClick={() => { setConfirmId(exhibit.id); setEditingId(undefined); }}>Remove</button>}
-            </div>}
-            {editingId === exhibit.id && <ExhibitEditor exhibit={exhibit} wing busy={busyId === exhibit.id} onCancel={() => setEditingId(undefined)}
-              onSave={(patch) => saveExhibit(exhibit.id, patch)} />}
-          </li>)}
+          {wingPhotos.map((exhibit) => exhibitRow(exhibit,
+            `Room ${exhibit.alleyIndex + 1} · Frame ${exhibit.slotIndex + 1}${exhibit.published ? '' : ' · hidden'}`))}
         </ul> : <p className="studio-empty">The New Wing is waiting for its first photograph. The first one opens Room 1.</p>}
       </section>
 
@@ -556,24 +590,10 @@ export function Studio() {
         <div className="studio-panel-heading">
           <p className="eyebrow">The original ten</p>
           <h2 id="studio-original-heading">The Gallery of Us</h2>
-          <p>The photographs the museum was built around. Their labels can change; their frames stay.</p>
+          <p>Edit the story, replace a photograph, or leave its frame empty for later.</p>
         </div>
         <ul className="studio-list">
-          {originals.map((exhibit) => <li key={exhibit.id} className="studio-item">
-            <img className="studio-thumb" src={exhibit.thumbnailUrl} alt="" loading="lazy" />
-            <div className="studio-item-copy">
-              <p className="studio-item-where">{exhibit.dateLabel || 'Original collection'}</p>
-              <h3>{exhibit.title}</h3>
-              <p>{exhibit.caption}</p>
-            </div>
-            {!demo && <div className="studio-item-actions">
-              <button className="button button--outline" type="button" disabled={busyId === exhibit.id} onClick={() => { setEditingId(editingId === exhibit.id ? undefined : exhibit.id); setConfirmId(undefined); }}>
-                {editingId === exhibit.id ? 'Close' : 'Edit label'}
-              </button>
-            </div>}
-            {editingId === exhibit.id && <ExhibitEditor exhibit={exhibit} wing={false} busy={busyId === exhibit.id} onCancel={() => setEditingId(undefined)}
-              onSave={(patch) => saveExhibit(exhibit.id, patch)} />}
-          </li>)}
+          {originals.map((exhibit, index) => exhibitRow(exhibit, `Original frame ${index + 1}${exhibit.published ? '' : ' · empty'}`))}
         </ul>
       </section>
     </main>

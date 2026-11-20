@@ -1,6 +1,6 @@
 import { MAX_FRAMES_PER_ALLEY } from '../../shared/config';
 import type { Collection, Role, WingAlley, WingExhibit } from '../../shared/types';
-import { parseManifest } from './manifest';
+import { exhibitImageUrl, parseManifest } from './manifest';
 
 const record = (value: unknown, field = 'record'): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`Expected ${field}.`);
@@ -24,13 +24,6 @@ const optionalDimension = (value: unknown, field: string): number | undefined =>
   return number;
 };
 
-const displayUrl = (value: unknown, field: string): string => {
-  const url = text(value, field);
-  if (url.startsWith('/') && !url.startsWith('//')) return url;
-  if (!/^https:\/\//i.test(url)) throw new Error(`${field} must be a same-origin path or an https URL.`);
-  return url;
-};
-
 function wingExhibit(value: unknown, alleyIndex: number, seen: Set<string>): WingExhibit {
   const item = record(value, 'wing exhibit');
   const id = text(item.id, 'exhibit ID');
@@ -48,8 +41,8 @@ function wingExhibit(value: unknown, alleyIndex: number, seen: Set<string>): Win
     title: text(item.title, 'title'),
     caption: text(item.caption, 'caption'),
     alt: text(item.alt, 'alt text'),
-    thumbnailUrl: displayUrl(item.thumbnailUrl, 'thumbnail'),
-    imageUrl: displayUrl(item.imageUrl, 'image URL'),
+    thumbnailUrl: exhibitImageUrl(item.thumbnailUrl, 'thumbnail', true),
+    imageUrl: exhibitImageUrl(item.imageUrl, 'image URL', true),
     published: item.published,
     alleyIndex,
     slotIndex,
@@ -64,7 +57,7 @@ export function parseCollection(data: unknown): Collection {
   const root = record(data, 'collection');
   const museum = record(root.museum, 'museum');
   const member = record(root.member, 'member');
-  const manifest = parseManifest(root.manifest);
+  const manifest = parseManifest(root.manifest, 'private');
 
   const role = member.role === 'OWNER' || member.role === 'PARTNER' ? (member.role as Role) : undefined;
   if (!role) throw new Error('Invalid member role.');

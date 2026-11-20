@@ -72,15 +72,18 @@ export type ExhibitFields = {
   dateLabel?: string;
 };
 
-export type NewExhibitInput = ExhibitFields & {
+export type PhotoUpload = {
   imagePath: string;
   thumbPath: string;
   width?: number;
   height?: number;
 };
 
+export type NewExhibitInput = ExhibitFields & PhotoUpload;
+
 export type ExhibitPatch = Partial<ExhibitFields> & {
   published?: boolean;
+  replacement?: PhotoUpload;
 };
 
 export type WingSlot = {

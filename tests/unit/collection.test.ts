@@ -41,6 +41,17 @@ const collection = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe('private collection', () => {
+  it('accepts a signed original photo and preserves a finale-only visit', () => {
+    const data = collection();
+    data.manifest.exhibits = [{ ...original(7), published: false,
+      thumbnailUrl: 'https://example.supabase.co/signed/thumb.webp', imageUrl: 'https://example.supabase.co/signed/full.webp',
+    }];
+    const result = parseCollection(data);
+    expect(result.manifest.exhibits).toEqual([expect.objectContaining({ id: 'photo-7', published: false,
+      imageUrl: 'https://example.supabase.co/signed/full.webp',
+    })]);
+  });
+
   it('accepts signed wing photographs and keeps their hanging slots', () => {
     const result = parseCollection(collection());
     expect(result.wing.total).toBe(1);

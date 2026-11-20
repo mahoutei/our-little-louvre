@@ -32,16 +32,16 @@ async function main() {
     const structural = {
       origin: 'ORIGINAL',
       anchor: item.anchor,
-      imagePath: item.imageUrl,
-      thumbPath: item.thumbnailUrl,
       sortOrder: index,
-      published: true,
     };
     await prisma.exhibit.upsert({
       where: { slug: item.id },
       update: structural,
       create: {
         ...structural,
+        imagePath: item.imageUrl,
+        thumbPath: item.thumbnailUrl,
+        published: true,
         slug: item.id,
         title: item.title,
         caption: item.caption,

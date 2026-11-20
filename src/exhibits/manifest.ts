@@ -14,22 +14,22 @@ const requiredText = (value: unknown, field: string): string => {
   return value.trim();
 };
 
-const imagePath = (value: unknown, field: string) => {
+export const exhibitImageUrl = (value: unknown, field: string, allowSigned = false) => {
   const path = requiredText(value, field);
   const base = 'https://museum.invalid';
-  if (!path.startsWith('/') || path.startsWith('//') || new URL(path, base).origin !== base) {
-    throw new Error(`${field} must use a same-origin path.`);
-  }
-  return path;
+  if (path.startsWith('/') && !path.startsWith('//') && new URL(path, base).origin === base) return path;
+  if (allowSigned && /^https:\/\//i.test(path) && new URL(path).protocol === 'https:') return path;
+  throw new Error(`${field} must use ${allowSigned ? 'a same-origin path or an HTTPS URL' : 'a same-origin path'}.`);
 };
 
-export function parseManifest(data: unknown): Manifest {
+export function parseManifest(data: unknown, source: 'sample' | 'private' = 'sample'): Manifest {
   const manifest = record(data);
-  if (!Array.isArray(manifest.exhibits) || manifest.exhibits.length < 8 || manifest.exhibits.length > 12) {
-    throw new Error('The collection must contain 8–12 exhibits.');
+  const minimum = source === 'private' ? 1 : 8;
+  if (!Array.isArray(manifest.exhibits) || manifest.exhibits.length < minimum || manifest.exhibits.length > 12) {
+    throw new Error(`The collection must contain ${minimum}–12 exhibits.`);
   }
   const exhibits = manifest.exhibits.map((item): Exhibit => {
-    const { id, anchor, title, caption, alt, thumbnailUrl, imageUrl, dateLabel } = record(item);
+    const { id, anchor, title, caption, alt, thumbnailUrl, imageUrl, dateLabel, published } = record(item);
     const exhibitId = requiredText(id, 'exhibit ID');
     return {
       id: exhibitId,
@@ -39,9 +39,9 @@ export function parseManifest(data: unknown): Manifest {
       title: requiredText(title, 'title'),
       caption: requiredText(caption, 'caption'),
       alt: requiredText(alt, 'alt text'),
-      thumbnailUrl: imagePath(thumbnailUrl, 'thumbnail'),
-      imageUrl: imagePath(imageUrl, 'close-up'),
-      published: true,
+      thumbnailUrl: exhibitImageUrl(thumbnailUrl, 'thumbnail', source === 'private'),
+      imageUrl: exhibitImageUrl(imageUrl, 'close-up', source === 'private'),
+      published: source === 'sample' || published !== false,
       ...(dateLabel === undefined ? {} : { dateLabel: requiredText(dateLabel, 'date') }),
     };
   });

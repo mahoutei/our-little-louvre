@@ -118,7 +118,7 @@ export function ExhibitFrame({ placement, onInspect, enabled, size: customSize, 
   }}>
     <mesh position={[0, 0, -0.005]}><boxGeometry args={[size + 0.025, size + 0.025, 0.10]} /><meshStandardMaterial color="#37271d" roughness={0.82} /></mesh>
     <mesh position={[0, 0, 0.064]}><boxGeometry args={[size - 0.045, size - 0.045, 0.026]} /><meshStandardMaterial color="#d2c5ad" roughness={0.93} /></mesh>
-    <PhotoSurface key={exhibit.thumbnailUrl} url={exhibit.thumbnailUrl} size={size - frameWidth * 3.25} />
+    {exhibit.published && <PhotoSurface key={exhibit.thumbnailUrl} url={exhibit.thumbnailUrl} size={size - frameWidth * 3.25} />}
     <mesh geometry={molding}><meshStandardMaterial vertexColors roughness={0.41} metalness={0.41} /></mesh>
     <mesh position={[0, -edge - 0.22, 0.004]}><boxGeometry args={[0.41, 0.12, 0.032]} /><meshStandardMaterial color="#9c805b" metalness={0.27} roughness={0.55} /></mesh>
     {lit && <PictureLight edge={edge} finale={finale} />}

@@ -21,6 +21,8 @@ type DbExhibitWithAuthor = DbExhibit & { author: { name: string } | null };
 const SIGNED_URL_TTL_SECONDS = 60 * 60 * 6;
 const PLACEHOLDER = '/museum-placeholder.svg';
 
+export const isPrivatePhotoPath = (path: string) => Boolean(path && !path.startsWith('/'));
+
 async function signedUrls(paths: string[]): Promise<Map<string, string>> {
   const unique = [...new Set(paths.filter(Boolean))];
   const urls = new Map<string, string>();
@@ -41,9 +43,7 @@ async function signedUrls(paths: string[]): Promise<Map<string, string>> {
 }
 
 function baseView(exhibit: DbExhibitWithAuthor, urls: Map<string, string>): ExhibitBase {
-  const original = exhibit.origin === 'ORIGINAL';
-  const thumbnail = original ? exhibit.thumbPath : urls.get(exhibit.thumbPath) ?? PLACEHOLDER;
-  const image = original ? exhibit.imagePath : urls.get(exhibit.imagePath) ?? PLACEHOLDER;
+  const display = (path: string) => isPrivatePhotoPath(path) ? urls.get(path) ?? PLACEHOLDER : path || PLACEHOLDER;
   return {
     id: exhibit.id,
     slug: exhibit.slug,
@@ -52,8 +52,8 @@ function baseView(exhibit: DbExhibitWithAuthor, urls: Map<string, string>): Exhi
     caption: exhibit.caption,
     alt: exhibit.alt,
     ...(exhibit.dateLabel ? { dateLabel: exhibit.dateLabel } : {}),
-    thumbnailUrl: thumbnail,
-    imageUrl: image,
+    thumbnailUrl: display(exhibit.thumbPath),
+    imageUrl: display(exhibit.imagePath),
     ...(exhibit.width ? { width: exhibit.width } : {}),
     ...(exhibit.height ? { height: exhibit.height } : {}),
     published: exhibit.published,
@@ -112,8 +112,14 @@ export async function buildCollection(
     throw new ApiError(503, 'The original collection has not been seeded yet. Run npm run db:seed.');
   }
 
-  const visible = includeUnpublished ? wing : wing.filter((exhibit) => exhibit.published);
-  const urls = await signedUrls(visible.flatMap((exhibit) => [exhibit.thumbPath, exhibit.imagePath]));
+  const finale = originals.find((exhibit) => exhibit.slug === 'the-story' || exhibit.anchor === 'EXHIBIT_FINALE') ?? originals.at(-1);
+  if (!finale) throw new ApiError(503, 'The original finale is missing.');
+
+  const visibleOriginals = includeUnpublished ? originals : originals.filter((exhibit) => exhibit.published || exhibit.id === finale.id);
+  const visibleWing = includeUnpublished ? wing : wing.filter((exhibit) => exhibit.published);
+  const originalsWithPhotos = includeUnpublished ? visibleOriginals : visibleOriginals.filter((exhibit) => exhibit.published);
+  const urls = await signedUrls([...originalsWithPhotos, ...visibleWing]
+    .flatMap((exhibit) => [exhibit.thumbPath, exhibit.imagePath]).filter(isPrivatePhotoPath));
   const alleys: WingAlley[] = groupWingRows(wing, env.alleyCapacity).map(({ index, rows, remaining }) => ({
     index,
     remaining,
@@ -121,14 +127,14 @@ export async function buildCollection(
   }));
   const total = alleys.reduce((sum, alley) => sum + alley.exhibits.length, 0);
 
-  const finale = originals.find((exhibit) => exhibit.slug === 'the-story' || exhibit.anchor === 'EXHIBIT_FINALE') ?? originals.at(-1);
-  if (!finale) throw new ApiError(503, 'The original finale is missing.');
-
   return {
     museum: { name: env.museumName },
     member: memberView(member),
     manifest: {
-      exhibits: originals.map((exhibit) => originalView(exhibit, urls)),
+      exhibits: visibleOriginals.map((exhibit) => originalView(!includeUnpublished && !exhibit.published ? {
+        ...exhibit, title: letter.title, caption: 'Read the final letter.', alt: 'The final letter',
+        imagePath: '', thumbPath: '', width: null, height: null, dateLabel: null, author: null,
+      } : exhibit, urls)),
       finale: { exhibitId: finale.id, letterTitle: letter.title, letterParagraphs: letter.paragraphs },
     },
     wing: { capacity: env.alleyCapacity, alleys, total },

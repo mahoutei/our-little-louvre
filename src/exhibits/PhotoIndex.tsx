@@ -17,7 +17,7 @@ export function PhotoIndex({ manifest, wingRooms, onOpen }: {
       <header className="collection-heading">
         <p className="eyebrow">The collection</p>
         <h1>The Gallery of Us</h1>
-        <p>Choose a photograph to read its story.</p>
+        {(photos.length > 0 || wingRooms.length > 0 || finale.published) && <p>Choose a photograph to read its story.</p>}
       </header>
       {chapters.map((chapter, index) => {
         const exhibits = photos.slice(index * chapterSize, (index + 1) * chapterSize);
@@ -47,13 +47,13 @@ export function PhotoIndex({ manifest, wingRooms, onOpen }: {
           </div>
         </section>)}
       </section>}
-      <section className="collection-finale" aria-labelledby="finale-heading">
-        <img src={finale.thumbnailUrl} alt={finale.alt} loading="lazy" />
+      <section className={`collection-finale${finale.published ? '' : ' collection-finale--letter'}`} aria-labelledby="finale-heading">
+        {finale.published && <img src={finale.thumbnailUrl} alt={finale.alt} loading="lazy" />}
         <div>
           <p className="eyebrow">The final exhibit</p>
           <h2 id="finale-heading">{finale.title}</h2>
           <div className="button-row">
-            <button className="button button--outline" onClick={() => onOpen(finale)}>View photograph <Icon name="arrow" /></button>
+            {finale.published && <button className="button button--outline" onClick={() => onOpen(finale)}>View photograph <Icon name="arrow" /></button>}
             <button className="button button--gold" onClick={() => onOpen(finale, true)}><Icon name="letter" /> Read the letter</button>
           </div>
         </div>

@@ -147,6 +147,7 @@ const transactionClient = {
     findUnique: state.exhibitFindUnique,
     findMany: state.exhibitFindMany,
     create: state.exhibitCreate,
+    update: state.exhibitUpdate,
     delete: state.exhibitDelete,
   },
   discardedUpload: { createMany: state.discardPaths, findFirst: state.findDiscardedPath },
@@ -287,6 +288,80 @@ describe('private routes', () => {
     expect(response.status).toBe(200);
     expect(state.exhibitDelete).toHaveBeenCalledWith({ where: { id: 'exhibit-1' } });
     expect(state.remove).not.toHaveBeenCalled();
+  });
+
+  it.each(['ORIGINAL', 'WING'])('replaces a %s photograph in place and signs the new files', async (origin) => {
+    const previous = origin === 'ORIGINAL'
+      ? { ...originals[0], imagePath: '', thumbPath: '', published: false }
+      : { ...hungExhibit, imagePath: 'old-author/photo.webp', thumbPath: 'old-author/thumb.webp' };
+    let saved = previous;
+    state.exhibitFindUnique.mockResolvedValue(previous);
+    state.exhibitUpdate.mockImplementation(async ({ data }) => { saved = { ...previous, ...data }; return saved; });
+    state.exhibitFindMany.mockImplementation(async ({ where }) => where.origin === 'ORIGINAL'
+      ? originals.map((item) => item.id === saved.id ? saved : item)
+      : where.origin === 'WING' && origin === 'WING' ? [saved] : []);
+    state.list.mockResolvedValue({ data: [{ name: `${base}-full.webp` }, { name: `${base}-thumb.webp` }], error: null });
+    state.createSignedUrls.mockResolvedValue({ data: [imagePath, thumbPath].map((path) => ({
+      path, signedUrl: `https://test.supabase.co/signed/${path}`,
+    })), error: null });
+
+    const response = await app.request(`/api/exhibits/${previous.id}`, json({
+      caption: 'A different evening.', replacement: { imagePath, thumbPath, width: 1200, height: 800 },
+    }, 'PATCH'));
+    expect(response.status).toBe(200);
+    expect(saved).toMatchObject({ id: previous.id, anchor: previous.anchor, slotIndex: previous.slotIndex,
+      imagePath, thumbPath, caption: 'A different evening.', width: 1200, height: 800, published: true });
+    const { collection } = await response.json();
+    const result = origin === 'ORIGINAL' ? collection.manifest.exhibits[0] : collection.wing.alleys[0].exhibits[0];
+    expect(result.imageUrl).toBe(`https://test.supabase.co/signed/${imagePath}`);
+    if (origin === 'WING') expect(state.remove).toHaveBeenCalledWith([previous.imagePath, previous.thumbPath]);
+    else expect(state.remove).not.toHaveBeenCalled();
+  });
+
+  it('rejects a replacement owned by someone else and keeps the original', async () => {
+    state.exhibitFindUnique.mockResolvedValue(originals[0]);
+    const response = await app.request('/api/exhibits/original-0', json({ replacement: {
+      imagePath: `other-1/${base}-full.webp`, thumbPath: `other-1/${base}-thumb.webp`,
+    } }, 'PATCH'));
+    expect(response.status).toBe(400);
+    expect(state.exhibitUpdate).not.toHaveBeenCalled();
+    expect(state.remove).not.toHaveBeenCalled();
+  });
+
+  it('keeps another frame intact when its upload is submitted as a replacement', async () => {
+    state.exhibitFindUnique.mockResolvedValue(originals[0]);
+    state.exhibitFindMany.mockResolvedValue([hungExhibit]);
+    const response = await app.request('/api/exhibits/original-0', json({ replacement: { imagePath, thumbPath } }, 'PATCH'));
+    expect(response.status).toBe(409);
+    expect(state.exhibitUpdate).not.toHaveBeenCalled();
+    expect(state.remove).not.toHaveBeenCalled();
+  });
+
+  it('clears an original photograph and keeps its frame in the studio', async () => {
+    let saved = originals[0];
+    state.exhibitFindUnique.mockResolvedValue(saved);
+    state.exhibitUpdate.mockImplementation(async ({ data }) => { saved = { ...saved, ...data }; return saved; });
+    state.exhibitFindMany.mockImplementation(async ({ where }) => where.origin === 'ORIGINAL' ? [saved, ...originals.slice(1)] : []);
+
+    const deleted = await app.request('/api/exhibits/original-0', { method: 'DELETE', headers: auth });
+    expect(deleted.status).toBe(200);
+    expect((await deleted.json()).collection.manifest.exhibits[0]).toMatchObject({ id: 'original-0', anchor: 'EXHIBIT_0', published: false });
+    const visit = await app.request('/api/collection', { headers: auth });
+    expect(visit.status).toBe(200);
+    expect((await visit.json()).collection.manifest.exhibits.map(({ id }: { id: string }) => id)).not.toContain('original-0');
+    expect(state.exhibitDelete).not.toHaveBeenCalled();
+    expect(state.remove).not.toHaveBeenCalled();
+  });
+
+  it('keeps the letter reachable when the finale photograph has been cleared', async () => {
+    state.exhibitFindMany.mockImplementation(async ({ where }) => where.origin === 'ORIGINAL'
+      ? originals.map((item) => ({ ...item, imagePath: '', thumbPath: '', published: false })) : []);
+    const response = await app.request('/api/collection', { headers: auth });
+    expect(response.status).toBe(200);
+    const { collection } = await response.json();
+    expect(collection.manifest.exhibits).toEqual([expect.objectContaining({ id: 'original-7', published: false, title: 'A Letter for You' })]);
+    expect(collection.manifest.finale.letterParagraphs).not.toHaveLength(0);
+    expect(state.createSignedUrls).not.toHaveBeenCalled();
   });
 
   it('reports a deleted exhibit when the subsequent storage removal fails', async () => {
