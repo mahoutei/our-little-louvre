@@ -174,7 +174,7 @@ function World({ room, wingRooms, input, active, reset, doorRequest, unlocking, 
   return <>
     <group ref={architecture}>
       <Architecture room={room} scene={building} />
-      {room === 'gallery' && <WingArchitecture rooms={wingRooms} />}
+      {room === 'gallery' && <WingArchitecture rooms={wingRooms} litRoom={Math.max(0, spotlitRoom)} />}
     </group>
     {room === 'courtyard' ? <CourtyardLight unlocking={unlocking} onDoorOpened={onDoorOpened} /> : <GalleryLight />}
     {frames.map((placement) => <ExhibitFrame key={placement.exhibit.id} placement={placement} onInspect={onOpen}

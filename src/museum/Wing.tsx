@@ -73,7 +73,7 @@ function useWingMaterials() {
   return materials;
 }
 
-export function WingArchitecture({ rooms }: { rooms: readonly WingAlley[] }) {
+export function WingArchitecture({ rooms, litRoom }: { rooms: readonly WingAlley[]; litRoom: number }) {
   const materials = useWingMaterials();
   const box = useMemo(() => new BoxGeometry(1, 1, 1), []);
   useEffect(() => () => box.dispose(), [box]);
@@ -115,6 +115,8 @@ export function WingArchitecture({ rooms }: { rooms: readonly WingAlley[] }) {
       const center = alleyCenterZ(index);
       const nextRoom = rooms[index + 1];
       return <group key={room?.index ?? index}>
+        {index === litRoom && <AimLight position={[0.25, 3.65, center + 0.4]} target={[-0.6, 0, center - 0.6]}
+          color="#f3cbb3" intensity={33} angle={0.96} distance={8} />}
         {boxAt([0, -0.06, center], [WING.roomHalfWidth * 2, 0.12, WING.alleyDepth], materials.stone)}
         {boxAt([0, -0.048, center], [2.5, 0.13, WING.alleyDepth], materials.floor)}
         {[-1, 1].map((side) => boxAt([side * 1.27, -0.04, center], [0.035, 0.02, WING.alleyDepth], materials.brass))}
@@ -133,7 +135,6 @@ export function WingArchitecture({ rooms }: { rooms: readonly WingAlley[] }) {
         {[-2.4, 0, 2.4].map((offset) => boxAt([0, WING.height - 0.18, center + offset], [WING.roomHalfWidth * 2, 0.16, 0.14], materials.trim))}
 
         {doorway(start, index ? passage.center : 0, index ? passage.half : WING.entryHalfWidth)}
-        {room && index > 0 && <Plaque text={`Room ${room.index + 1}`} position={[passage.center, 3.13, start + 0.145]} />}
 
         {!nextRoom ? <group>
           {boxAt([0, WING.height / 2, end], [WING.roomHalfWidth * 2, WING.height, 0.26], materials.plaster)}
