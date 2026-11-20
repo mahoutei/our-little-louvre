@@ -5,16 +5,18 @@ import {
 import type { Material } from 'three';
 import type { WingAlley } from '../../shared/types';
 import type { FramePlacement } from './ExhibitFrames';
-import { WING, alleyCenterZ, alleyEndZ, alleyStartZ, wingFramePosition } from './wingLayout';
-import { galleryBackZ } from './layout';
+import { WING, alleyCenterZ, alleyEndZ, alleyStartZ, wingFramePosition, wingPoint } from './wingLayout';
+import { hall } from './layout';
+import { AimLight } from './Scenery';
 
-export function useWingPlacements(rooms: readonly WingAlley[]): FramePlacement[] {
+export function useWingPlacements(rooms: readonly WingAlley[]): (FramePlacement & { wingRoom: number; featured: boolean })[] {
   return useMemo(() => {
-    const left = new Quaternion().setFromEuler(new Euler(0, Math.PI / 2, 0));
-    const right = new Quaternion().setFromEuler(new Euler(0, -Math.PI / 2, 0));
-    return rooms.flatMap(({ exhibits }, room) => exhibits.map((exhibit) => {
-      const { x, y, z } = wingFramePosition(room, exhibit.slotIndex);
-      return { exhibit, position: new Vector3(x, y, z), orientation: x < 0 ? left : right, finale: false };
+    return rooms.flatMap(({ exhibits }, room) => exhibits.map((exhibit, index) => {
+      const featured = index === 0;
+      const { x, y, z, yaw } = wingFramePosition(room, exhibit.slotIndex, featured);
+      const point = wingPoint(x, z);
+      const orientation = new Quaternion().setFromEuler(new Euler(0, yaw - Math.PI / 2, 0));
+      return { exhibit, position: new Vector3(point.x, y, point.z), orientation, finale: false, wingRoom: room, featured };
     }));
   }, [rooms]);
 }
@@ -59,14 +61,13 @@ function Plaque({ text, position, width = 1.6, height = 0.42, rotationY = 0 }: {
 
 function useWingMaterials() {
   const materials = useMemo(() => ({
-    floor: new MeshStandardMaterial({ color: '#6f4e31', roughness: 0.72 }),
-    stone: new MeshStandardMaterial({ color: '#b8a58b', roughness: 0.9 }),
-    plaster: new MeshStandardMaterial({ color: '#cdbaa0', roughness: 0.95 }),
-    deep: new MeshStandardMaterial({ color: '#5a4330', roughness: 0.88 }),
-    trim: new MeshStandardMaterial({ color: '#ddc7a5', roughness: 0.58, metalness: 0.04 }),
+    floor: new MeshStandardMaterial({ color: '#5e3e30', roughness: 0.8 }),
+    stone: new MeshStandardMaterial({ color: '#968373', roughness: 0.91 }),
+    plaster: new MeshStandardMaterial({ color: '#51383b', roughness: 0.95 }),
+    deep: new MeshStandardMaterial({ color: '#3e2c2a', roughness: 0.88 }),
+    trim: new MeshStandardMaterial({ color: '#b49a76', roughness: 0.58 }),
     brass: new MeshStandardMaterial({ color: '#a6814f', roughness: 0.37, metalness: 0.58 }),
-    ceiling: new MeshStandardMaterial({ color: '#d4c4ad', roughness: 0.97 }),
-    glow: new MeshBasicMaterial({ color: '#ffe1ae', toneMapped: false }),
+    ceiling: new MeshStandardMaterial({ color: '#62534c', roughness: 0.97 }),
   }), []);
   useEffect(() => () => Object.values(materials).forEach((material) => material.dispose()), [materials]);
   return materials;
@@ -81,32 +82,39 @@ export function WingArchitecture({ rooms }: { rooms: readonly WingAlley[] }) {
     <mesh key={key} geometry={box} material={material} position={position} scale={scale} receiveShadow />
   );
 
-  const entryCenter = galleryBackZ - WING.entryDepth / 2;
+  const entryCenter = -WING.entryDepth / 2;
+  const passage = { center: WING.passageCenter, half: WING.passageHalfWidth };
+  const doorway = (z: number, center: number, half: number) => {
+    const left = center - half;
+    const right = center + half;
+    const top = 2.76;
+    return <>
+      {boxAt([(left - WING.roomHalfWidth) / 2, WING.height / 2, z], [left + WING.roomHalfWidth, WING.height, 0.26], materials.plaster)}
+      {boxAt([(right + WING.roomHalfWidth) / 2, WING.height / 2, z], [WING.roomHalfWidth - right, WING.height, 0.26], materials.plaster)}
+      {boxAt([center, (top + WING.height) / 2, z], [half * 2, WING.height - top, 0.26], materials.plaster)}
+      {boxAt([center, top, z], [half * 2 + 0.24, 0.12, 0.32], materials.trim)}
+    </>;
+  };
 
-  return <group>
-    <color attach="background" args={['#171310']} />
-    <ambientLight color="#f0e0ca" intensity={0.52} />
-    <hemisphereLight color="#d8c7b2" groundColor="#8d6a49" intensity={0.54} />
-    <directionalLight color="#ffe6c4" position={[-4, 11, 6]} intensity={0.36} />
-
-    {/* The threshold behind the visitor, set into the gallery's back wall. */}
+  return <group position={[hall.halfWidth, 0, hall.salon.z]} rotation={[0, -Math.PI / 2, 0]}>
+    {boxAt([1.68, 3.02, 0.52], [0.055, 0.055, 1.12], materials.brass)}
+    <Plaque text="The New Wing →" position={[1.72, 2.76, 0.76]} width={1.12} height={0.36} rotationY={Math.PI / 2} />
+    <Plaque text="The New Wing" position={[0, 3.74, 0.28]} width={1.9} />
+    <AimLight position={[0, 3.32, -0.8]} target={[0, 0, 0.65]} color="#ffc590" intensity={35} angle={0.72} distance={7} />
     {boxAt([0, -0.06, entryCenter], [WING.entryHalfWidth * 2, 0.12, WING.entryDepth], materials.stone)}
     {boxAt([0, WING.height, entryCenter], [WING.entryHalfWidth * 2, 0.2, WING.entryDepth], materials.ceiling)}
     {[-1, 1].map((side) => <group key={`entry-${side}`}>
       {boxAt([side * (WING.entryHalfWidth + 0.13), WING.height / 2, entryCenter], [0.26, WING.height, WING.entryDepth], materials.plaster)}
       {boxAt([side * (WING.entryHalfWidth - 0.02), 0.22, entryCenter], [0.08, 0.44, WING.entryDepth], materials.deep)}
-      {boxAt([side * (WING.entryHalfWidth - 0.22), WING.height - 0.3, entryCenter], [0.05, 0.05, WING.entryDepth - 0.4], materials.glow)}
     </group>)}
-    {boxAt([0, WING.height / 2, galleryBackZ - 0.32], [WING.entryHalfWidth * 2, WING.height, WING.wallThickness], materials.plaster)}
-    {boxAt([0, 0.22, galleryBackZ - 0.46], [WING.entryHalfWidth * 2, 0.44, 0.08], materials.deep)}
-    <Plaque text="The Gallery of Us" position={[0, 1.84, galleryBackZ - 0.46]} width={2.2} rotationY={Math.PI} />
 
-    {rooms.map((room, index) => {
+    {Array.from({ length: Math.max(1, rooms.length) }, (_, index) => {
+      const room = rooms[index];
       const start = alleyStartZ(index);
       const end = alleyEndZ(index);
       const center = alleyCenterZ(index);
       const nextRoom = rooms[index + 1];
-      return <group key={room.index}>
+      return <group key={room?.index ?? index}>
         {boxAt([0, -0.06, center], [WING.roomHalfWidth * 2, 0.12, WING.alleyDepth], materials.stone)}
         {boxAt([0, -0.048, center], [2.5, 0.13, WING.alleyDepth], materials.floor)}
         {[-1, 1].map((side) => boxAt([side * 1.27, -0.04, center], [0.035, 0.02, WING.alleyDepth], materials.brass))}
@@ -116,7 +124,6 @@ export function WingArchitecture({ rooms }: { rooms: readonly WingAlley[] }) {
           {boxAt([side * (WING.roomHalfWidth - 0.03), 0.22, center], [0.08, 0.44, WING.alleyDepth], materials.deep)}
           {boxAt([side * (WING.roomHalfWidth - 0.03), 0.82, center], [0.06, 0.08, WING.alleyDepth], materials.trim)}
           {boxAt([side * (WING.roomHalfWidth - 0.04), WING.height - 0.24, center], [0.16, 0.18, WING.alleyDepth], materials.trim)}
-          {boxAt([side * 2.9, WING.height - 0.3, center], [0.05, 0.05, WING.alleyDepth - 0.5], materials.glow)}
           {[-4.5, -1.55, 1.55, 4.5].map((offset) => <group key={`pilaster-${index}-${side}-${offset}`}>
             {boxAt([side * (WING.roomHalfWidth - 0.06), 1.66, center + offset], [0.14, 3.32, 0.32], materials.plaster)}
             {boxAt([side * (WING.roomHalfWidth - 0.065), 3.36, center + offset], [0.2, 0.16, 0.42], materials.trim)}
@@ -125,27 +132,23 @@ export function WingArchitecture({ rooms }: { rooms: readonly WingAlley[] }) {
         </group>)}
         {[-2.4, 0, 2.4].map((offset) => boxAt([0, WING.height - 0.18, center + offset], [WING.roomHalfWidth * 2, 0.16, 0.14], materials.trim))}
 
-        {/* Doorway into this alley, with a lintel and its name above. */}
-        {[-1, 1].map((side) => boxAt([side * ((WING.roomHalfWidth + WING.openingHalfWidth) / 2), WING.height / 2, start], [WING.roomHalfWidth - WING.openingHalfWidth, WING.height, 0.26], materials.plaster))}
-        {boxAt([0, (3.2 + WING.height) / 2, start], [WING.openingHalfWidth * 2, WING.height - 3.2, 0.26], materials.plaster)}
-        {boxAt([0, 3.2, start], [WING.openingHalfWidth * 2 + 0.3, 0.16, 0.34], materials.trim)}
-        <Plaque text={`Room ${room.index + 1}`} position={[0, 3.55, start + 0.145]} />
+        {doorway(start, index ? passage.center : 0, index ? passage.half : WING.entryHalfWidth)}
+        {room && index > 0 && <Plaque text={`Room ${room.index + 1}`} position={[passage.center, 3.13, start + 0.145]} />}
 
         {!nextRoom ? <group>
           {boxAt([0, WING.height / 2, end], [WING.roomHalfWidth * 2, WING.height, 0.26], materials.plaster)}
           {boxAt([0, 0.41, end + 0.16], [WING.roomHalfWidth * 2, 0.82, 0.08], materials.deep)}
           {boxAt([0, 0.85, end + 0.17], [WING.roomHalfWidth * 2, 0.07, 0.11], materials.trim)}
-          <Plaque text="End of the New Wing" position={[0, 1.84, end + 0.145]} width={2.5} height={0.45} />
+          <Plaque text={room ? 'End of the New Wing' : 'New memories will hang here'}
+            position={[room ? 0 : 0.1, room ? 3.37 : 1.8, end + 0.145]} width={2.4} height={0.4} />
+          {!room && <AimLight position={[0, 3, end + 2.5]} target={[0, 1.8, end]} color="#ffcf9a" intensity={45} angle={0.65} distance={5} />}
         </group> : <group>
-          {[-1, 1].map((side) => boxAt([side * ((WING.roomHalfWidth + WING.openingHalfWidth) / 2), WING.height / 2, end], [WING.roomHalfWidth - WING.openingHalfWidth, WING.height, 0.26], materials.plaster))}
-          {boxAt([0, (3.2 + WING.height) / 2, end], [WING.openingHalfWidth * 2, WING.height - 3.2, 0.26], materials.plaster)}
-          {boxAt([0, 3.2, end], [WING.openingHalfWidth * 2 + 0.3, 0.16, 0.34], materials.trim)}
-          <Plaque text={`Room ${nextRoom.index + 1}`} position={[0, 3.55, end + 0.145]} />
-          <Plaque text={`Room ${room.index + 1}`} position={[0, 3.55, alleyStartZ(index + 1) - 0.145]} rotationY={Math.PI} />
-          {boxAt([0, WING.height, end - WING.passageDepth / 2], [WING.openingHalfWidth * 2, 0.2, WING.passageDepth], materials.ceiling)}
-          {[-1, 1].map((side) => boxAt([side * (WING.openingHalfWidth + 0.13), WING.height / 2, end - WING.passageDepth / 2], [0.26, WING.height, WING.passageDepth], materials.plaster))}
-          {[-1, 1].map((side) => boxAt([side * (WING.openingHalfWidth - 0.03), 0.22, end - WING.passageDepth / 2], [0.08, 0.44, WING.passageDepth], materials.deep))}
-          {boxAt([0, -0.06, end - WING.passageDepth / 2], [WING.openingHalfWidth * 2, 0.12, WING.passageDepth], materials.stone)}
+          {doorway(end, passage.center, passage.half)}
+          <Plaque text={`Room ${nextRoom.index + 1}`} position={[passage.center, 3.13, end + 0.145]} width={1.35} />
+          <Plaque text={`Room ${room!.index + 1}`} position={[passage.center, 3.13, alleyStartZ(index + 1) - 0.145]} width={1.35} rotationY={Math.PI} />
+          {boxAt([passage.center, WING.height, end - WING.passageDepth / 2], [passage.half * 2, 0.2, WING.passageDepth], materials.ceiling)}
+          {[-1, 1].map((side) => boxAt([passage.center + side * (passage.half + 0.13), WING.height / 2, end - WING.passageDepth / 2], [0.26, WING.height, WING.passageDepth], materials.plaster, side))}
+          {boxAt([passage.center, -0.06, end - WING.passageDepth / 2], [passage.half * 2, 0.12, WING.passageDepth], materials.stone)}
         </group>}
       </group>;
     })}

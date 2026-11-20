@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Mesh, MeshStandardMaterial, NoColorSpace, RepeatWrapping, SRGBColorSpace, TextureLoader } from 'three';
 import type { Object3D, Texture } from 'three';
-import type { BuiltRoom } from './layout';
+import type { Room } from './layout';
 
 export const galleryLightUrl = '/materials/gallery-light.webp';
 
@@ -12,7 +12,7 @@ const details: Record<string, { map: string; scale: number }> = {
   Parquet: { map: 'oak', scale: 0.49 },
 };
 
-export function useSurfaceDetail(scene: Object3D, room: BuiltRoom, invalidate: () => void) {
+export function useSurfaceDetail(scene: Object3D, room: Room, invalidate: () => void) {
   useEffect(() => {
     const loader = new TextureLoader();
     const materials = new Set<MeshStandardMaterial>();

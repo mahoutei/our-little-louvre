@@ -1,15 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import { BufferGeometry, DoubleSide, Float32BufferAttribute, InstancedMesh, Mesh, Object3D, Vector3 } from 'three';
-import type { BuiltRoom } from './layout';
+import type { Room } from './layout';
 import { entranceZ, pyramid } from './layout';
 import { PyramidDoors } from './PyramidDoors';
 import { useSurfaceDetail } from './SurfaceDetail';
 import { CourtyardReflection, GlassMaterial } from './ReflectiveGlass';
 
-export const modelUrl = (room: BuiltRoom) => `/models/${room}.glb`;
+export const modelUrl = (room: Room) => `/models/${room}.glb`;
 
-export function Architecture({ room, scene }: { room: BuiltRoom; scene: Object3D }) {
+export function Architecture({ room, scene }: { room: Room; scene: Object3D }) {
   const invalidate = useThree((state) => state.invalidate);
   useSurfaceDetail(scene, room, invalidate);
   useLayoutEffect(() => {

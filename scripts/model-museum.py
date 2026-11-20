@@ -2,6 +2,7 @@
 
 import json
 import math
+import sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -260,9 +261,11 @@ def gallery():
     door = hall['wingDoor']
     for wing in hall['wings']:
         side = wing['side']
-        door_half = door['halfWidth']
-        tops = [front, *(z-door_half for z in wing['doorZ'])]
-        bottoms = [*(z+door_half for z in wing['doorZ']), end]
+        openings = [(z, door) for z in wing['doorZ']]
+        if side > 0:
+            openings.append((hall['salon']['z'], hall['salon']))
+        tops = [front, *(z-spec['halfWidth'] for z, spec in openings)]
+        bottoms = [*(z+spec['halfWidth'] for z, spec in openings), end]
         for near, far in zip(tops, bottoms):
             middle, length = (near+far)/2, near-far
             box('Limestone', side*(h+0.19), spring/2, middle, 0.38, spring, length)
@@ -276,8 +279,8 @@ def gallery():
             if wing_near > wing_far:
                 for y, thick in ((0.16, 0.22), (0.78, 0.09), (3.15, 0.13)):
                     box('Trim', side*(h+0.40), y, (wing_near+wing_far)/2, 0.13, thick, wing_near-wing_far)
-        for z in wing['doorZ']:
-            wing_portal(side, h, z, door, spring)
+        for z, spec in openings:
+            wing_portal(side, h, z, spec, spring)
         gallery_wing(hall, wing)
         box('Limestone', side*(h+alcove)/2, spring/2, end, h-alcove, spring, 0.52)
         box('Warm Plaster', side*(alcove+0.1), 2.0, (end+back)/2, 0.2, 4.0, end-back+0.2)
@@ -381,6 +384,8 @@ def bake_gallery():
         tint = warm if side < 0 else (0.77, 0.83, 1)
         for z in wing['doorZ']:
             lights.append(aimed_light('Side gallery spill', 'AREA', (center, 3.65, z), (side*hall['halfWidth'], 0.9, z), tint, 47, 1.44))
+    salon_z = hall['salon']['z']
+    lights.append(aimed_light('New Wing threshold spill', 'AREA', (hall['halfWidth']+0.8, 3.2, salon_z), (hall['halfWidth']-1.4, 0.3, salon_z), warm, 62, 1.3))
     # Picture lights stay with the runtime exhibits so empty anchors do not cast a spill.
 
     receivers = [bpy.data.objects[name] for name in ('Limestone', 'Warm Plaster', 'Trim', 'Deep Stone', 'Parquet', 'Vault')]
@@ -473,5 +478,7 @@ def export(name, builder):
         render_courtyard_reflection()
 
 
-export('courtyard', courtyard)
-export('gallery', gallery)
+builders = {'courtyard': courtyard, 'gallery': gallery}
+requested = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else builders
+for room in requested:
+    export(room, builders[room])

@@ -14,8 +14,10 @@ const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies(
 const output = new URL('../public/models/', import.meta.url);
 const raw = new URL('../.museum-tools/raw/', import.meta.url);
 const lighting = new URL('../public/materials/', import.meta.url);
+const models = process.argv.length > 2 ? process.argv.slice(2) : ['courtyard', 'gallery'];
+if (models.some((model) => model !== 'courtyard' && model !== 'gallery')) throw new Error('Choose courtyard or gallery.');
 await mkdir(output, { recursive: true });
-for (const model of ['courtyard', 'gallery']) {
+for (const model of models) {
   const source = fileURLToPath(new URL(`${model}.glb`, raw));
   const document = await io.read(source);
   const anchors = () => document.getRoot().listNodes().map((node) => node.getName()).filter((name) => name.startsWith('EXHIBIT_')).sort().join(',');
@@ -31,10 +33,13 @@ for (const model of ['courtyard', 'gallery']) {
 }
 
 await mkdir(lighting, { recursive: true });
-await sharp(fileURLToPath(new URL('gallery-light.png', raw))).blur(0.8).webp({ quality: 87 })
-  .toFile(fileURLToPath(new URL('gallery-light.webp', lighting)));
+if (models.includes('gallery')) {
+  await sharp(fileURLToPath(new URL('gallery-light.png', raw))).blur(0.8).webp({ quality: 87 })
+    .toFile(fileURLToPath(new URL('gallery-light.webp', lighting)));
+}
 
 // Blender renders the actual palace and paving. Fill the transparent sky with blue-hour light.
+if (!models.includes('courtyard')) process.exit(0);
 const probe = fileURLToPath(new URL('courtyard-probe.png', raw));
 const { width, height } = await sharp(probe).metadata();
 const sky = Buffer.alloc(width * height * 3);

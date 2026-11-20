@@ -12,13 +12,12 @@ import { PhotoIndex } from './exhibits/PhotoIndex';
 import { Icon } from './Icons';
 import { Welcome } from './Welcome';
 import { gsap, useMuseumMotion } from './motion';
-import { galleryReturnPose } from './museum/layout';
-import type { Pose, Room } from './museum/layout';
+import type { Room } from './museum/layout';
 import { visibleWingRooms } from './museum/wingLayout';
 
 const loadMuseum = () => import('./museum/Museum');
 const createMuseum = () => lazy(loadMuseum);
-type View = 'welcome' | 'museum' | 'photos' | 'wing-photos';
+type View = 'welcome' | 'museum' | 'photos';
 
 function RoomReveal() {
   const veil = useRef<HTMLDivElement>(null);
@@ -41,7 +40,6 @@ class MuseumBoundary extends Component<{ children: ReactNode; onFailure: () => v
 const ROOM_LABELS: Record<Room, { eyebrow: string; title: string; loading: string }> = {
   courtyard: { eyebrow: 'After closing', title: 'The Courtyard', loading: 'Opening the courtyard…' },
   gallery: { eyebrow: 'Private collection', title: 'The Gallery of Us', loading: 'Opening the gallery…' },
-  wing: { eyebrow: 'Room 1', title: 'The New Wing', loading: 'Opening the New Wing…' },
 };
 
 export function App() {
@@ -61,13 +59,8 @@ export function App() {
   const [doorRequest, setDoorRequest] = useState(0);
   const [atDoor, setAtDoor] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
-  const [gallerySpawn, setGallerySpawn] = useState<Pose>();
-  const [wingRoomIndex, setWingRoomIndex] = useState(0);
   const load = useRef<Promise<Collection> | undefined>(undefined);
   const returnFromPhotos = useRef<'welcome' | 'museum'>('welcome');
-  const returningFromWingPhotos = useRef(false);
-  const wingEntrance = useRef<HTMLButtonElement>(null);
-  const wingPhotoEntrance = useRef<HTMLButtonElement>(null);
   const region = useRef<HTMLElement>(null);
   const hasLeftWelcome = useRef(false);
   const retryAttempt = useRef(0);
@@ -82,11 +75,7 @@ export function App() {
   }
 
   useEffect(() => {
-    const entrance = view === 'museum' && returningFromWingPhotos.current
-      ? (room === 'wing' ? wingPhotoEntrance.current : wingEntrance.current)
-      : null;
-    returningFromWingPhotos.current = false;
-    (entrance ?? region.current)?.focus({ preventScroll: true });
+    region.current?.focus({ preventScroll: true });
   }, [view, room]);
 
   const loadCollection = useCallback(() => {
@@ -115,18 +104,9 @@ export function App() {
   }
 
   function browse() {
-    if (view === 'museum' && room === 'wing') {
-      showView('wing-photos');
-      return;
-    }
     if (view !== 'photos') returnFromPhotos.current = view === 'museum' ? 'museum' : 'welcome';
     void loadCollection();
     showView('photos');
-  }
-
-  function returnFromWing() {
-    returningFromWingPhotos.current = true;
-    showView('museum');
   }
 
   function start() {
@@ -145,7 +125,6 @@ export function App() {
     setRoom('courtyard');
     setAtDoor(false);
     setUnlocking(false);
-    setGallerySpawn(undefined);
     showView('welcome');
   }
 
@@ -171,43 +150,24 @@ export function App() {
   const openExhibit = useCallback((exhibit: DisplayExhibit, letter?: boolean) => setSelection({ exhibit, letter }), []);
   const unlockDoor = useCallback(() => setUnlocking(true), []);
   const enterGallery = useCallback(() => {
-    setGallerySpawn(undefined);
     setRoom('gallery');
     setAtDoor(false);
     setUnlocking(false);
-  }, []);
-  function enterWing() {
-    if (!wing) return;
-    if (!wingRooms.length) {
-      showView('wing-photos');
-      return;
-    }
-    setWingRoomIndex(0);
-    setRoom('wing');
-    setReady(undefined);
-  }
-  const leaveWing = useCallback(() => {
-    setGallerySpawn(galleryReturnPose);
-    setRoom('gallery');
-    setReady(undefined);
-    setFailed(false);
-    setVisited(true);
   }, []);
   const failWalkthrough = useCallback(() => { setFailed(true); setReady(undefined); setVisited(false); setUnlocking(false); }, []);
   const loading = !failed && ready !== room;
   const roomLabel = ROOM_LABELS[room];
 
   return (
-    <div className={`app app--${view === 'wing-photos' ? 'photos' : view}`}>
+    <div className={`app app--${view}`}>
       <a className="skip-link" href="#main-content">Skip to content</a>
       {view !== 'welcome' && <header className="masthead">
         <button className="wordmark" onClick={welcome} aria-label="Our Little Louvre, welcome">
           <img src="/pyramid.svg" alt="" width="35" height="35" /> <span>Our Little Louvre</span>
         </button>
         <nav className="masthead-actions" aria-label="Museum">
-          {view === 'wing-photos' ? <button className="masthead-link" onClick={returnFromWing}><Icon name="back" /> {room === 'wing' ? 'Back to the New Wing' : 'Back to the gallery'}</button>
-            : view === 'photos' ? <button className="masthead-link" onClick={() => showView(returnFromPhotos.current)}><Icon name="back" /> {returnFromPhotos.current === 'museum' ? 'Back to museum' : 'Back to invitation'}</button>
-            : (room !== 'wing' || !failed) && <button className="masthead-link" ref={room === 'wing' ? wingPhotoEntrance : undefined} onClick={browse}><Icon name="collection" /> {room === 'wing' ? 'Browse New Wing photos' : 'Browse photos'}</button>}
+          {view === 'photos' ? <button className="masthead-link" onClick={() => showView(returnFromPhotos.current)}><Icon name="back" /> {returnFromPhotos.current === 'museum' ? 'Back to museum' : 'Back to invitation'}</button>
+            : <button className="masthead-link" onClick={browse}><Icon name="collection" /> Browse photos</button>}
           {!auth.demo && <a className="masthead-link masthead-link--quiet" href="/studio">Private studio</a>}
         </nav>
       </header>}
@@ -219,13 +179,12 @@ export function App() {
           </main>}
         </div>
       )}
-      {view === 'wing-photos' && manifest && <PhotoIndex manifest={manifest} wingRooms={wingRooms} wingOnly focusRegion={region} onOpen={openExhibit} />}
       {(view === 'museum' || visited) && (
         <main className="walkthrough" id={view === 'museum' ? 'main-content' : undefined} ref={view === 'museum' ? region : undefined} tabIndex={-1} hidden={view !== 'museum'}>
           {visited && !failed && <MuseumBoundary onFailure={failWalkthrough}>
             <Suspense fallback={null}>
-              <Museum room={room} manifest={manifest} wingRooms={wingRooms} wingRoomIndex={wingRoomIndex} onWingRoomChange={setWingRoomIndex}
-                spawn={gallerySpawn} active={view === 'museum' && !selection && !loading && !unlocking} visible={view === 'museum'} reset={reset}
+              <Museum room={room} manifest={manifest} wingRooms={wingRooms}
+                active={view === 'museum' && !selection && !loading && !unlocking} visible={view === 'museum'} reset={reset}
                 doorRequest={doorRequest} unlocking={unlocking} onDoorProximity={setAtDoor} onUnlock={unlockDoor}
                 onReady={setReady} onDoorOpened={enterGallery} onOpen={openExhibit} onFailure={failWalkthrough} />
             </Suspense>
@@ -235,28 +194,21 @@ export function App() {
             <h1>The walkthrough is unavailable</h1>
             <div className="button-row walkthrough-recovery">
               <button className="button button--gold" disabled={retrying} onClick={retryWalkthrough}><Icon name="reset" /> {retrying ? 'Reopening…' : 'Retry walkthrough'}</button>
-              <button className="button button--outline" ref={room === 'wing' ? wingPhotoEntrance : undefined} onClick={browse}>{room === 'wing' ? 'Browse New Wing photos' : 'Browse photos'} <Icon name="arrow" /></button>
-              {room === 'wing' && <button className="button button--outline" onClick={leaveWing}><Icon name="back" /> Back to the gallery</button>}
+              <button className="button button--outline" onClick={browse}>Browse photos <Icon name="arrow" /></button>
             </div>
           </div>}
           {!loading && !failed && <>
             <RoomReveal key={room} />
-            <div className="scene-caption"><p className="eyebrow">{room === 'wing' ? `Room ${(wingRooms[wingRoomIndex]?.index ?? 0) + 1}` : roomLabel.eyebrow}</p><h1>{roomLabel.title}</h1></div>
+            <div className="scene-caption"><p className="eyebrow">{roomLabel.eyebrow}</p><h1>{roomLabel.title}</h1></div>
             <div className="scene-actions">
               <button className="button button--glass reset-view" type="button" aria-label="Reset view" disabled={unlocking} onClick={() => setReset((current) => current + 1)}><Icon name="reset" size={17} /><span>Reset view</span></button>
               {room === 'courtyard' && <button className="button button--gold" type="button" disabled={unlocking}
                 onClick={atDoor ? unlockDoor : () => setDoorRequest((current) => current + 1)}>
                 <Icon name="key" />{unlocking ? 'Unlocking…' : atDoor ? 'Use brass key' : 'Go to pyramid door'}
               </button>}
-              {room === 'gallery' && <button className="button button--gold" type="button" ref={wingEntrance} onClick={enterWing} disabled={!wing}>
-                <Icon name="collection" /> {!wing && !contentFailed ? 'Loading the New Wing…' : 'Visit the New Wing'}
-              </button>}
-              {room === 'wing' && <button className="button button--gold" type="button" onClick={leaveWing}>
-                <Icon name="back" /> Back to the gallery
-              </button>}
             </div>
             {room === 'courtyard' && atDoor && !unlocking && <p className="door-prompt">Press <kbd>E</kbd> or select Use brass key.</p>}
-            {(room === 'gallery' || room === 'wing') && contentFailed && <aside className="content-error">The exhibits couldn’t load. <button onClick={retryCollection}>Try again</button></aside>}
+            {room === 'gallery' && contentFailed && <aside className="content-error">The exhibits couldn’t load. <button onClick={retryCollection}>Try again</button></aside>}
           </>}
         </main>
       )}

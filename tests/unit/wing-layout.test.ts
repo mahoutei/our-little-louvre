@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { WingAlley, WingExhibit } from '../../shared/types';
-import { EYE_HEIGHT } from '../../src/museum/movement';
-import { alleyCenterZ, alleyEndZ, alleyStartZ, visibleWingRooms, wingFramePosition, wingRoomAt, wingSpawn } from '../../src/museum/wingLayout';
+import { moveOnFloor } from '../../src/museum/movement';
+import { gallery, hall } from '../../src/museum/layout';
+import { alleyEndZ, alleyStartZ, visibleWingRooms, wingFramePosition, wingPoint, wingRoomAt, wingWalls, WING } from '../../src/museum/wingLayout';
 
 const photo = (alleyIndex: number, slotIndex: number, published = true): WingExhibit => ({
   id: `${alleyIndex}-${slotIndex}`, slug: `${alleyIndex}-${slotIndex}`, origin: 'WING',
@@ -19,26 +20,28 @@ describe('the visitor layout of the New Wing', () => {
     expect(visibleWingRooms({ capacity: 6, total: 1, alleys: [alley(0, photo(0, 0, false))] })).toEqual([]);
   });
 
-  it.each([0, 1, 2, 3, 4, 5])('starts inside the first room facing its first published frame in slot %i', (slot) => {
-    const frame = wingFramePosition(0, slot);
-    const pose = wingSpawn(slot);
-    expect(pose.z).toBeLessThan(alleyStartZ(0));
-    expect(pose.z).toBeGreaterThan(alleyEndZ(0));
-    const dx = frame.x - pose.x;
-    const dz = frame.z - pose.z;
-    const distance = Math.hypot(dx, dz);
-    expect(Math.hypot(distance, frame.y - EYE_HEIGHT)).toBeLessThan(4.7);
-    expect(-Math.sin(pose.yaw)).toBeCloseTo(dx / distance);
-    expect(-Math.cos(pose.yaw)).toBeCloseTo(dz / distance);
-    expect(Math.tan(pose.pitch)).toBeCloseTo((frame.y - EYE_HEIGHT) / distance);
+  it('lets visitors walk into the alcove and back through the same arch', () => {
+    const walls = [...gallery.walls, ...wingWalls(1)];
+    const start = wingPoint(0, 1.7);
+    expect(wingRoomAt(start, 1)).toBe(-1);
+    const inside = moveOnFloor(start, { x: WING.entryDepth + 3, z: 0 }, walls);
+    expect(inside.x).toBeGreaterThan(hall.halfWidth + WING.entryDepth);
+    expect(moveOnFloor(inside, { x: start.x - inside.x, z: 0 }, walls).x).toBeCloseTo(start.x);
+    const beside = wingPoint(hall.salon.halfWidth + 0.16, 1.7);
+    expect(moveOnFloor(beside, { x: 4, z: 0 }, walls).x).toBeLessThan(hall.halfWidth);
   });
 
-  it('changes rooms midway through a passage and clamps to the ends', () => {
-    const midway = (alleyStartZ(1) + alleyEndZ(0)) / 2;
-    expect(wingRoomAt(alleyCenterZ(0), 2)).toBe(0);
-    expect(wingRoomAt(midway + 0.01, 2)).toBe(0);
-    expect(wingRoomAt(midway - 0.01, 2)).toBe(1);
-    expect(wingRoomAt(alleyEndZ(1) - 1, 2)).toBe(1);
-    expect(wingRoomAt(alleyStartZ(0) + 1, 2)).toBe(0);
+  it('keeps the display wall solid beside the passage to the next room', () => {
+    const hero = wingFramePosition(0, 5, true);
+    expect(hero.z).toBeGreaterThan(alleyEndZ(0));
+    expect(hero.x).toBeGreaterThan(WING.passageCenter + WING.passageHalfWidth + 0.65);
+    const walls = wingWalls(2);
+    const near = alleyEndZ(0) + 1;
+    const blocked = moveOnFloor(wingPoint(hero.x, near), { x: 5, z: 0 }, walls);
+    expect(wingRoomAt(blocked, 2)).toBe(0);
+    const through = moveOnFloor(wingPoint(WING.passageCenter, near), { x: 5, z: 0 }, walls);
+    expect(wingRoomAt(through, 2)).toBe(1);
+    const end = wingPoint(0, alleyEndZ(1));
+    expect(moveOnFloor(through, { x: 30, z: 0 }, walls).x).toBeLessThan(end.x);
   });
 });

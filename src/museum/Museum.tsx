@@ -11,7 +11,7 @@ import { Icon } from '../Icons';
 import { ExhibitFrame, useFramePlacements } from './ExhibitFrames';
 import type { FramePlacement } from './ExhibitFrames';
 import { doorPose, isAtEntrance, isNearEntrance, rooms } from './layout';
-import type { BuiltRoom, Pose, Room } from './layout';
+import type { Pose, Room } from './layout';
 import { clearInput, createInput, EYE_HEIGHT, movementVector, moveOnFloor, WALK_SPEED } from './movement';
 import { Architecture, CourtyardLight, GalleryLight, modelUrl } from './Scenery';
 import { hasClearSightline } from './sightline';
@@ -20,42 +20,50 @@ import { TouchControls } from './TouchControls';
 import { requestMouseLook, useWalkInput } from './useWalkInput';
 import type { WalkInput } from './useWalkInput';
 import { useWingPlacements, WingArchitecture } from './Wing';
-import { wingRoomAt, wingSpawn, wingWalls } from './wingLayout';
+import { wingRoomAt, wingWalls } from './wingLayout';
 
 type Props = {
-  room: Room; manifest?: Manifest; wingRooms: readonly WingAlley[]; wingRoomIndex: number; onWingRoomChange: (index: number) => void;
-  spawn?: Pose; active: boolean; visible: boolean; reset: number;
+  room: Room; manifest?: Manifest; wingRooms: readonly WingAlley[];
+  active: boolean; visible: boolean; reset: number;
   doorRequest: number; unlocking: boolean; onDoorProximity: (near: boolean) => void; onUnlock: () => void;
   onReady: (room: Room) => void; onDoorOpened: () => void; onOpen: (exhibit: DisplayExhibit) => void; onFailure: () => void;
 };
 
 type RoomProps = Omit<Props, 'visible'> & { input: RefObject<WalkInput>; setTarget: (exhibit?: DisplayExhibit) => void; target: RefObject<DisplayExhibit | undefined> };
-type BuiltRoomProps = RoomProps & { room: BuiltRoom };
 const INSPECT_RANGE = 4.7;
 const WALKTHROUGH_FOV = 56;
 
 export function clearRoomModel(room: Room) {
-  if (room === 'wing') return;
   useGLTF.clear(modelUrl(room));
 }
 
 function LoadedRoom(props: RoomProps) {
-  if (props.room === 'wing') return <WingWorld {...props} />;
-  const built = props as BuiltRoomProps;
-  return built.room === 'courtyard' ? <World {...built} /> : <GalleryWorld {...built} />;
+  return props.room === 'courtyard' ? <World {...props} /> : <GalleryWorld {...props} />;
 }
 
-function GalleryWorld(props: BuiltRoomProps) {
+function GalleryWorld(props: RoomProps) {
   const frames = useFramePlacements(props.manifest);
-  return <World {...props} frames={frames} />;
+  const wingFrames = useWingPlacements(props.wingRooms);
+  return <World {...props} frames={frames} wingFrames={wingFrames} />;
 }
 
-function World({ room, spawn, input, active, reset, doorRequest, unlocking, onDoorProximity, onUnlock, target, setTarget, onReady, onDoorOpened, onOpen, onFailure, frames = [] }: BuiltRoomProps & { frames?: FramePlacement[] }) {
+type WingPlacements = ReturnType<typeof useWingPlacements>;
+const EMPTY_FRAMES: FramePlacement[] = [];
+const EMPTY_WING_FRAMES: WingPlacements = [];
+
+function World({ room, wingRooms, input, active, reset, doorRequest, unlocking, onDoorProximity, onUnlock, target, setTarget, onReady, onDoorOpened, onOpen, onFailure, frames = EMPTY_FRAMES, wingFrames = EMPTY_WING_FRAMES }: RoomProps & { frames?: FramePlacement[]; wingFrames?: WingPlacements }) {
   const { camera, gl, size } = useThree();
   const { scene: building } = useGLTF(modelUrl(room), false);
   const canvas = gl.domElement;
-  const initialPose = room === 'gallery' && spawn ? spawn : rooms[room].spawn;
+  const initialPose = rooms[room].spawn;
   const pose = useRef({ ...initialPose });
+  const walls = useMemo(() => room === 'gallery' ? [...rooms.gallery.walls, ...wingWalls(wingRooms.length)] : rooms.courtyard.walls, [room, wingRooms.length]);
+  const architecture = useRef<Group>(null);
+  const [spotlitRoom, setSpotlitRoom] = useState(-1);
+  const nearbyWingFrames = useMemo(() => wingFrames.filter(({ wingRoom, featured }) => (
+    spotlitRoom === -1 ? wingRoom === 0 && featured : Math.abs(wingRoom - spotlitRoom) <= 1
+  )), [spotlitRoom, wingFrames]);
+  const allFrames = useMemo(() => [...frames, ...nearbyWingFrames], [frames, nearbyWingFrames]);
   const nearDoor = useRef(false);
   const appliedDoorRequest = useRef(doorRequest);
   const lastTargetCheck = useRef(0);
@@ -67,7 +75,7 @@ function World({ room, spawn, input, active, reset, doorRequest, unlocking, onDo
     if (!active || document.pointerLockElement === canvas || performance.now() - input.current.lastDrag <= 250) return false;
     const distance = ray.origin.distanceTo(point);
     if (distance > INSPECT_RANGE) return false;
-    return hasClearSightline(sightline, ray.origin, ray.direction, distance, building);
+    return hasClearSightline(sightline, ray.origin, ray.direction, distance, architecture.current);
   }
 
   const inspect = useCallback(() => {
@@ -120,7 +128,7 @@ function World({ room, spawn, input, active, reset, doorRequest, unlocking, onDo
     controls.look.y = 0;
     const direction = movementVector(controls, player.yaw);
     const distance = WALK_SPEED * Math.min(delta, 0.35);
-    const moved = moveOnFloor(player, { x: direction.x * distance, z: direction.z * distance }, rooms[room].walls);
+    const moved = moveOnFloor(player, { x: direction.x * distance, z: direction.z * distance }, walls);
     player.x = moved.x;
     player.z = moved.z;
     camera.position.set(player.x, EYE_HEIGHT, player.z);
@@ -142,10 +150,12 @@ function World({ room, spawn, input, active, reset, doorRequest, unlocking, onDo
 
     if (state.clock.elapsedTime - lastTargetCheck.current < 0.08) return;
     lastTargetCheck.current = state.clock.elapsedTime;
+    const nextSpotlitRoom = wingRoomAt(player, wingRooms.length);
+    if (nextSpotlitRoom !== spotlitRoom) setSpotlitRoom(nextSpotlitRoom);
     camera.getWorldDirection(vectors.forward);
     let bestDot = 0.925;
     let best: DisplayExhibit | undefined;
-    for (const { exhibit, position, orientation } of frames) {
+    for (const { exhibit, position, orientation } of allFrames) {
       vectors.offset.subVectors(position, camera.position);
       if (vectors.offset.lengthSq() > INSPECT_RANGE ** 2) continue;
       vectors.front.set(0, 0, 1).applyQuaternion(orientation);
@@ -154,7 +164,7 @@ function World({ room, spawn, input, active, reset, doorRequest, unlocking, onDo
       vectors.offset.divideScalar(distance);
       const dot = vectors.offset.dot(vectors.forward);
       if (dot <= bestDot) continue;
-      if (!hasClearSightline(sightline, camera.position, vectors.offset, distance, building)) continue;
+      if (!hasClearSightline(sightline, camera.position, vectors.offset, distance, architecture.current)) continue;
       bestDot = dot;
       best = exhibit;
     }
@@ -162,105 +172,15 @@ function World({ room, spawn, input, active, reset, doorRequest, unlocking, onDo
   });
 
   return <>
-    <Architecture room={room} scene={building} />
+    <group ref={architecture}>
+      <Architecture room={room} scene={building} />
+      {room === 'gallery' && <WingArchitecture rooms={wingRooms} />}
+    </group>
     {room === 'courtyard' ? <CourtyardLight unlocking={unlocking} onDoorOpened={onDoorOpened} /> : <GalleryLight />}
     {frames.map((placement) => <ExhibitFrame key={placement.exhibit.id} placement={placement} onInspect={onOpen}
       enabled={canClickFrame} />)}
-  </>;
-}
-
-function WingWorld({ wingRooms, wingRoomIndex, onWingRoomChange, input, active, reset, onReady, onFailure, onOpen, target, setTarget }: RoomProps) {
-  const { camera, gl, size } = useThree();
-  const canvas = gl.domElement;
-  const count = wingRooms.length;
-  const firstSlot = wingRooms[0]?.exhibits[0]?.slotIndex ?? 0;
-  const spawn = useMemo(() => wingSpawn(firstSlot), [firstSlot]);
-  const walls = useMemo(() => wingWalls(count), [count]);
-  const pose = useRef({ ...spawn });
-  const lastTargetCheck = useRef(0);
-  const architecture = useRef<Group>(null);
-  const vectors = useMemo(() => ({ forward: new Vector3(), offset: new Vector3(), front: new Vector3() }), []);
-  const sightline = useMemo(() => new Raycaster(), []);
-  const placements = useWingPlacements(wingRooms);
-
-  function canClickFrame(ray: Ray, point: Vector3) {
-    if (!active || document.pointerLockElement === canvas || performance.now() - input.current.lastDrag <= 250) return false;
-    const distance = ray.origin.distanceTo(point);
-    return distance <= INSPECT_RANGE && hasClearSightline(sightline, ray.origin, ray.direction, distance, architecture.current);
-  }
-
-  const inspect = useCallback(() => {
-    if (target.current) onOpen(target.current);
-  }, [onOpen, target]);
-  useWalkInput(canvas, input, active, inspect);
-
-  const placePlayer = useCallback(() => {
-    pose.current = { ...spawn };
-    camera.position.set(spawn.x, EYE_HEIGHT, spawn.z);
-    camera.rotation.set(spawn.pitch, spawn.yaw, 0, 'YXZ');
-    clearInput(input.current);
-    setTarget();
-    onWingRoomChange(0);
-  }, [camera, input, onWingRoomChange, setTarget, spawn]);
-
-  useLayoutEffect(() => { placePlayer(); }, [placePlayer, reset]);
-  useLayoutEffect(() => {
-    if (!(camera instanceof PerspectiveCamera) || size.height <= 0) return;
-    const aspect = size.width / size.height;
-    camera.fov = WALKTHROUGH_FOV + Math.max(0, 1 - aspect) * 32;
-    camera.updateProjectionMatrix();
-  }, [camera, size.width, size.height]);
-  useEffect(() => { onReady('wing'); }, [onReady]);
-  useEffect(() => {
-    const lost = (event: Event) => { event.preventDefault(); onFailure(); };
-    canvas.addEventListener('webglcontextlost', lost);
-    return () => canvas.removeEventListener('webglcontextlost', lost);
-  }, [canvas, onFailure]);
-
-  useFrame((_, delta) => {
-    if (!active) return;
-    const player = pose.current;
-    const controls = input.current;
-    player.pitch = Math.max(-1.28, Math.min(1.28, player.pitch - controls.look.y));
-    player.yaw -= controls.look.x;
-    controls.look.x = 0;
-    controls.look.y = 0;
-    const direction = movementVector(controls, player.yaw);
-    const distance = WALK_SPEED * Math.min(delta, 0.35);
-    const moved = moveOnFloor(player, { x: direction.x * distance, z: direction.z * distance }, walls);
-    player.x = moved.x;
-    player.z = moved.z;
-    camera.position.set(player.x, EYE_HEIGHT, player.z);
-    camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ');
-
-    const now = performance.now();
-    if (now - lastTargetCheck.current < 90) return;
-    lastTargetCheck.current = now;
-    const currentRoom = wingRoomAt(player.z, count);
-    if (currentRoom !== wingRoomIndex) onWingRoomChange(currentRoom);
-    camera.getWorldDirection(vectors.forward);
-    let bestDot = 0.925;
-    let best: DisplayExhibit | undefined;
-    for (const { exhibit, position, orientation } of placements) {
-      vectors.offset.subVectors(position, camera.position);
-      if (vectors.offset.lengthSq() > INSPECT_RANGE ** 2) continue;
-      vectors.front.set(0, 0, 1).applyQuaternion(orientation);
-      if (vectors.offset.dot(vectors.front) >= 0) continue;
-      const length = vectors.offset.length();
-      vectors.offset.divideScalar(length);
-      const dot = vectors.offset.dot(vectors.forward);
-      if (dot <= bestDot) continue;
-      if (!hasClearSightline(sightline, camera.position, vectors.offset, length, architecture.current)) continue;
-      bestDot = dot;
-      best = exhibit;
-    }
-    if (target.current?.id !== best?.id) setTarget(best);
-  });
-
-  return <>
-    <group ref={architecture}><WingArchitecture rooms={wingRooms} /></group>
-    {placements.map((placement) => <ExhibitFrame key={placement.exhibit.id} placement={placement} onInspect={onOpen}
-      enabled={canClickFrame} size={1.5} lit={wingRoomAt(placement.position.z, count) === wingRoomIndex} />)}
+    {nearbyWingFrames.map((placement) => <ExhibitFrame key={placement.exhibit.id} placement={placement} onInspect={onOpen}
+      enabled={canClickFrame} size={placement.featured ? 1.49 : 1.32} lit={placement.wingRoom === Math.max(0, spotlitRoom)} />)}
   </>;
 }
 

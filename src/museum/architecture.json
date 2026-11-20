@@ -4,6 +4,7 @@
     "halfWidth": 5.3, "frontZ": 7, "alcoveZ": -23, "alcoveHalfWidth": 2.05, "backZ": -29,
     "bayLines": [5, -3, -11, -19], "springHeight": 5.35,
     "wingDoor": { "halfWidth": 1.43, "springHeight": 2.4, "rise": 0.65 },
+    "salon": { "z": -21.64, "halfWidth": 1.15, "springHeight": 2.55, "rise": 0.64 },
     "wings": [
       {
         "side": -1, "outerX": 10.88, "nearZ": 5.05, "farZ": -10.95, "doorZ": [2.72, -8.62],

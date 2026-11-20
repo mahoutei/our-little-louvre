@@ -3,8 +3,7 @@ import architecture from './architecture.json';
 export type Point = { x: number; z: number };
 export type Pose = Point & { yaw: number; pitch: number };
 export type Wall = { minX: number; maxX: number; minZ: number; maxZ: number };
-export type Room = 'courtyard' | 'gallery' | 'wing';
-export type BuiltRoom = Exclude<Room, 'wing'>;
+export type Room = 'courtyard' | 'gallery';
 
 const wall = (minX: number, maxX: number, minZ: number, maxZ: number): Wall => ({ minX, maxX, minZ, maxZ });
 export const { pyramid, hall } = architecture;
@@ -31,11 +30,15 @@ function sideWall(side: number, inner: number, outer: number, minZ: number, maxZ
 }
 
 const gallerySideWalls = hall.wings.flatMap(({ side, outerX, nearZ, farZ, doorZ }) => {
-  const { halfWidth: doorHalfWidth } = hall.wingDoor;
+  const openings = doorZ.map((z) => ({ z, halfWidth: hall.wingDoor.halfWidth }));
+  if (side > 0) openings.push(hall.salon);
   const hallSide = (minZ: number, maxZ: number) => sideWall(side, hall.halfWidth - 0.23, hall.halfWidth + 0.48, minZ, maxZ);
   return [
-    ...doorZ.map((z, index) => hallSide(z + doorHalfWidth, index === 0 ? hall.frontZ : doorZ[index - 1] - doorHalfWidth)),
-    hallSide(hall.alcoveZ, doorZ[doorZ.length - 1] - doorHalfWidth),
+    ...openings.map(({ z, halfWidth }, index) => {
+      const previous = openings[index - 1];
+      return hallSide(z + halfWidth, previous ? previous.z - previous.halfWidth : hall.frontZ);
+    }),
+    hallSide(hall.alcoveZ, openings.at(-1)!.z - openings.at(-1)!.halfWidth),
     sideWall(side, outerX - 0.07, outerX + 0.6, farZ - 0.45, nearZ + 0.45),
     sideWall(side, hall.halfWidth, outerX + 0.6, nearZ, nearZ + 0.45),
     sideWall(side, hall.halfWidth, outerX + 0.6, farZ - 0.45, farZ),
@@ -59,12 +62,7 @@ export const gallery = {
   ],
 };
 
-export const rooms: Record<BuiltRoom, { spawn: Pose; walls: Wall[] }> = { courtyard, gallery };
-
-/** Standing in the alcove, facing back down the main hall. */
-export const galleryReturnPose: Pose = { x: 0, z: hall.backZ + 2.6, yaw: Math.PI, pitch: 0.02 };
-
-export const galleryBackZ = hall.backZ;
+export const rooms: Record<Room, { spawn: Pose; walls: Wall[] }> = { courtyard, gallery };
 
 export function isAtEntrance({ x, z }: Point) {
   return Math.abs(x) <= pyramid.doorHalfWidth && z <= entranceZ + 2.65 && z >= entranceZ;
