@@ -7,6 +7,25 @@ import { describe, expect, it } from 'vitest';
 import { parseManifest } from '../../src/exhibits/manifest';
 import { hall } from '../../src/museum/layout';
 
+it('keeps the first courtyard model small without dropping surfaces or triangles', async () => {
+  const file = await readFile('public/models/courtyard.glb');
+  expect(file.byteLength).toBeLessThanOrEqual(512 * 1024);
+
+  await MeshoptDecoder.ready;
+  const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder });
+  const model = await io.readBinary(file);
+  const primitives = model.getRoot().listMeshes().flatMap((mesh) => mesh.listPrimitives());
+  const triangles = primitives.reduce((count, primitive) => (
+    count + (primitive.getIndices() ?? primitive.getAttribute('POSITION')!).getCount() / 3
+  ), 0);
+  expect(triangles).toBe(37116);
+  for (const surface of ['Pavers', 'Limestone']) {
+    const primitive = primitives.find((item) => item.getMaterial()?.getName() === surface);
+    expect(primitive?.getAttribute('TEXCOORD_0'), surface).toBeTruthy();
+    expect(primitive?.getMaterial()?.getBaseColorTexture(), surface).toBeTruthy();
+  }
+});
+
 describe('exported gallery', () => {
   it('has a real open arch from the main hall into the New Wing', async () => {
     await MeshoptDecoder.ready;

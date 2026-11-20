@@ -2,7 +2,7 @@ import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { dedup, meshopt, textureCompress } from '@gltf-transform/functions';
+import { dedup, meshopt, prune, textureCompress, weld } from '@gltf-transform/functions';
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 import sharp from 'sharp';
 
@@ -26,7 +26,10 @@ for (const model of models) {
   )).map((mesh) => mesh.getName()).sort().join(',');
   const before = anchors();
   const mapped = lightmapMeshes();
-  await document.transform(dedup(), textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [512, 512], quality: 86 }), meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
+  await document.transform(dedup());
+  // The gallery's runtime light map uses UVs that are not referenced by the GLB materials.
+  if (model === 'courtyard') await document.transform(prune({ keepLeaves: true }), weld());
+  await document.transform(textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [512, 512], quality: 86 }), meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
   if (anchors() !== before) throw new Error(`Optimization changed the ${model} exhibit anchors.`);
   if (lightmapMeshes() !== mapped) throw new Error(`Optimization changed the ${model} light map UVs.`);
   await io.write(fileURLToPath(new URL(`${model}.glb`, output)), document);
