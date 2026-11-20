@@ -7,8 +7,6 @@ import { PyramidDoors } from './PyramidDoors';
 import { useSurfaceDetail } from './SurfaceDetail';
 import { CourtyardReflection, GlassMaterial } from './ReflectiveGlass';
 
-export const modelUrl = (room: Room) => `/models/${room}.glb`;
-
 export function Architecture({ room, scene }: { room: Room; scene: Object3D }) {
   const invalidate = useThree((state) => state.invalidate);
   useSurfaceDetail(scene, room, invalidate);

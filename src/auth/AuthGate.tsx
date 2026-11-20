@@ -8,7 +8,10 @@ import './auth.css';
 
 function GateScene({ children, quiet = false }: { children: ReactNode; quiet?: boolean }) {
   return <main className={`gate-scene${quiet ? ' gate-scene--quiet' : ''}`}>
-    <img className="gate-background" src="/media/invitation-desk.webp" alt="" width="1536" height="1024" fetchPriority="high" />
+    <picture>
+      <source media="(max-width: 720px)" srcSet="/media/invitation-desk-phone.webp" />
+      <img className="gate-background" src="/media/invitation-desk.webp" alt="" width="1536" height="1024" fetchPriority="high" />
+    </picture>
     <div className="gate-stage">
       <a className="gate-brand" href="/" aria-label="Our Little Louvre">
         <img src="/pyramid.svg" alt="" width="34" height="34" />

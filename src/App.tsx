@@ -1,5 +1,6 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { preload } from 'react-dom';
 import type { Collection } from '../shared/types';
 import { api } from './api/client';
 import { demoCollection } from './api/demo';
@@ -13,6 +14,7 @@ import { Icon } from './Icons';
 import { Welcome } from './Welcome';
 import { gsap, useMuseumMotion } from './motion';
 import type { Room } from './museum/layout';
+import { modelUrl } from './museum/layout';
 import { visibleWingRooms } from './museum/wingLayout';
 
 const loadMuseum = () => import('./museum/Museum');
@@ -111,6 +113,7 @@ export function App() {
 
   function start() {
     void loadCollection();
+    preload(modelUrl(room), { as: 'fetch', crossOrigin: 'anonymous' });
     setFailed(false);
     setVisited(true);
     showView('museum');

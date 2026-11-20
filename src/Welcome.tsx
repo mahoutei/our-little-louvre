@@ -35,7 +35,10 @@ export function Welcome({ focusRegion, animateEntrance, onStart, onBrowse }: {
   }
 
   return <main id="main-content" className="entry-scene" ref={focusRegion} tabIndex={-1}>
-    <img className="entry-background" src="/media/invitation-desk.webp" alt="" width="1536" height="1024" fetchPriority="high" />
+    <picture>
+      <source media="(max-width: 720px)" srcSet="/media/invitation-desk-phone.webp" />
+      <img className="entry-background" src="/media/invitation-desk.webp" alt="" width="1536" height="1024" fetchPriority="high" />
+    </picture>
     <div className="entry-stage">
       {opened ? <article className="entry-note" aria-labelledby="entry-salutation">
         <button className="entry-note-close" onClick={() => setNote(false)} aria-label="Close the note"><Icon name="close" size={16} /></button>

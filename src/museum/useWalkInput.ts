@@ -14,7 +14,7 @@ export function requestMouseLook(canvas: HTMLCanvasElement) {
   }
 }
 
-export function useWalkInput(canvas: HTMLCanvasElement, input: RefObject<WalkInput>, active: boolean, inspect: () => void) {
+export function useWalkInput(canvas: HTMLCanvasElement, input: RefObject<WalkInput>, active: boolean, inspect: () => void, requestFrame: () => void) {
   useEffect(() => {
     const clear = () => clearInput(input.current);
     if (!active) {
@@ -24,7 +24,7 @@ export function useWalkInput(canvas: HTMLCanvasElement, input: RefObject<WalkInp
     }
 
     let drag: { id: number; x: number; y: number; travel: number } | undefined;
-    const stop = () => { drag = undefined; clear(); };
+    const stop = () => { drag = undefined; clear(); requestFrame(); };
     const keyDown = (event: KeyboardEvent) => {
       if (event.altKey || event.ctrlKey || event.metaKey || event.defaultPrevented) return;
       if ((event.target as Element | null)?.closest?.('input,textarea,select,[contenteditable]')) return;
@@ -32,14 +32,19 @@ export function useWalkInput(canvas: HTMLCanvasElement, input: RefObject<WalkInp
         document.exitPointerLock();
         stop();
       }
-      if (isMovementKey(event.code)) { event.preventDefault(); input.current.keys.add(event.code); }
+      if (isMovementKey(event.code)) {
+        event.preventDefault();
+        input.current.keys.add(event.code);
+        requestFrame();
+      }
       if (event.code === 'KeyE' && !event.repeat) inspect();
     };
-    const keyUp = (event: KeyboardEvent) => input.current.keys.delete(event.code);
+    const keyUp = (event: KeyboardEvent) => { if (input.current.keys.delete(event.code)) requestFrame(); };
     const lockedMotion = (event: MouseEvent) => {
       if (document.pointerLockElement !== canvas) return;
       input.current.look.x += event.movementX * 0.0024;
       input.current.look.y += event.movementY * 0.0024;
+      requestFrame();
     };
     const beginDrag = (event: PointerEvent) => {
       if (document.pointerLockElement === canvas || event.button !== 0 || drag) return;
@@ -57,6 +62,7 @@ export function useWalkInput(canvas: HTMLCanvasElement, input: RefObject<WalkInp
       const factor = event.pointerType === 'mouse' ? 0.0038 : 0.005;
       input.current.look.x += dx * factor;
       input.current.look.y += dy * factor;
+      requestFrame();
     };
     const endDrag = (event: PointerEvent) => {
       if (!drag || drag.id !== event.pointerId) return;
@@ -88,5 +94,5 @@ export function useWalkInput(canvas: HTMLCanvasElement, input: RefObject<WalkInp
       stop();
       if (document.pointerLockElement === canvas) document.exitPointerLock();
     };
-  }, [active, canvas, input, inspect]);
+  }, [active, canvas, input, inspect, requestFrame]);
 }

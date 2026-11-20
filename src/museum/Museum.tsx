@@ -10,10 +10,10 @@ import type { DisplayExhibit, Manifest } from '../exhibits/manifest';
 import { Icon } from '../Icons';
 import { ExhibitFrame, useFramePlacements } from './ExhibitFrames';
 import type { FramePlacement } from './ExhibitFrames';
-import { doorPose, isAtEntrance, isNearEntrance, rooms } from './layout';
+import { doorPose, isAtEntrance, isNearEntrance, modelUrl, rooms } from './layout';
 import type { Pose, Room } from './layout';
 import { clearInput, createInput, EYE_HEIGHT, movementVector, moveOnFloor, WALK_SPEED } from './movement';
-import { Architecture, CourtyardLight, GalleryLight, modelUrl } from './Scenery';
+import { Architecture, CourtyardLight, GalleryLight } from './Scenery';
 import { hasClearSightline } from './sightline';
 import { galleryLightUrl } from './SurfaceDetail';
 import { TouchControls } from './TouchControls';
@@ -52,7 +52,7 @@ const EMPTY_FRAMES: FramePlacement[] = [];
 const EMPTY_WING_FRAMES: WingPlacements = [];
 
 function World({ room, wingRooms, input, active, reset, doorRequest, unlocking, onDoorProximity, onUnlock, target, setTarget, onReady, onDoorOpened, onOpen, onFailure, frames = EMPTY_FRAMES, wingFrames = EMPTY_WING_FRAMES }: RoomProps & { frames?: FramePlacement[]; wingFrames?: WingPlacements }) {
-  const { camera, gl, size } = useThree();
+  const { camera, gl, size, invalidate } = useThree();
   const { scene: building } = useGLTF(modelUrl(room), false);
   const canvas = gl.domElement;
   const initialPose = rooms[room].spawn;
@@ -67,6 +67,7 @@ function World({ room, wingRooms, input, active, reset, doorRequest, unlocking, 
   const nearDoor = useRef(false);
   const appliedDoorRequest = useRef(doorRequest);
   const lastTargetCheck = useRef(0);
+  const wasMoving = useRef(false);
   const prefetchStarted = useRef(false);
   const vectors = useMemo(() => ({ forward: new Vector3(), offset: new Vector3(), front: new Vector3() }), []);
   const sightline = useMemo(() => new Raycaster(), []);
@@ -82,7 +83,7 @@ function World({ room, wingRooms, input, active, reset, doorRequest, unlocking, 
     if (room === 'courtyard' && isAtEntrance(pose.current)) onUnlock();
     else if (target.current) onOpen(target.current);
   }, [onOpen, onUnlock, room, target]);
-  useWalkInput(canvas, input, active, inspect);
+  useWalkInput(canvas, input, active, inspect, invalidate);
 
   const placePlayer = useCallback((destination: Pose) => {
     pose.current = { ...destination };
@@ -90,12 +91,14 @@ function World({ room, wingRooms, input, active, reset, doorRequest, unlocking, 
     camera.position.set(x, EYE_HEIGHT, z);
     camera.rotation.set(pitch, yaw, 0, 'YXZ');
     clearInput(input.current);
+    wasMoving.current = false;
     setTarget();
+    invalidate();
     if (room === 'courtyard') {
       nearDoor.current = isAtEntrance(destination);
       onDoorProximity(nearDoor.current);
     }
-  }, [camera, input, onDoorProximity, room, setTarget]);
+  }, [camera, input, invalidate, onDoorProximity, room, setTarget]);
 
   useLayoutEffect(() => { placePlayer(initialPose); }, [initialPose, placePlayer, reset]);
   useLayoutEffect(() => {
@@ -103,7 +106,8 @@ function World({ room, wingRooms, input, active, reset, doorRequest, unlocking, 
     const aspect = size.width / size.height;
     camera.fov = WALKTHROUGH_FOV + Math.max(0, 1 - aspect) * 32;
     camera.updateProjectionMatrix();
-  }, [camera, size.width, size.height]);
+    invalidate();
+  }, [camera, invalidate, size.width, size.height]);
   useLayoutEffect(() => {
     if (room !== 'courtyard' || appliedDoorRequest.current === doorRequest) return;
     appliedDoorRequest.current = doorRequest;
@@ -111,6 +115,10 @@ function World({ room, wingRooms, input, active, reset, doorRequest, unlocking, 
   }, [doorRequest, placePlayer, room]);
 
   useEffect(() => { onReady(room); }, [onReady, room]);
+  useLayoutEffect(() => {
+    wasMoving.current = false;
+    if (active) invalidate();
+  }, [active, invalidate]);
   useLayoutEffect(() => { if (room === 'courtyard') gl.shadowMap.needsUpdate = true; }, [gl, room]);
   useEffect(() => {
     const lost = (event: Event) => { event.preventDefault(); onFailure(); };
@@ -127,10 +135,16 @@ function World({ room, wingRooms, input, active, reset, doorRequest, unlocking, 
     controls.look.x = 0;
     controls.look.y = 0;
     const direction = movementVector(controls, player.yaw);
-    const distance = WALK_SPEED * Math.min(delta, 0.35);
-    const moved = moveOnFloor(player, { x: direction.x * distance, z: direction.z * distance }, walls);
-    player.x = moved.x;
-    player.z = moved.z;
+    const moving = Boolean(direction.x || direction.z);
+    if (moving) {
+      // The first frame can follow a long idle interval.
+      const distance = WALK_SPEED * Math.min(delta, wasMoving.current ? 0.35 : 1 / 30);
+      const moved = moveOnFloor(player, { x: direction.x * distance, z: direction.z * distance }, walls);
+      player.x = moved.x;
+      player.z = moved.z;
+      invalidate();
+    }
+    wasMoving.current = moving;
     camera.position.set(player.x, EYE_HEIGHT, player.z);
     camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ');
 
@@ -148,7 +162,7 @@ function World({ room, wingRooms, input, active, reset, doorRequest, unlocking, 
       return;
     }
 
-    if (state.clock.elapsedTime - lastTargetCheck.current < 0.08) return;
+    if (moving && state.clock.elapsedTime - lastTargetCheck.current < 0.08) return;
     lastTargetCheck.current = state.clock.elapsedTime;
     const nextSpotlitRoom = wingRoomAt(player, wingRooms.length);
     if (nextSpotlitRoom !== spotlitRoom) setSpotlitRoom(nextSpotlitRoom);
@@ -192,6 +206,8 @@ export default function Museum(props: Props) {
   const [focusedExhibit, setFocusedExhibit] = useState<DisplayExhibit>();
   const [locked, setLocked] = useState(false);
   const viewport = useRef<HTMLDivElement>(null);
+  const invalidateRef = useRef<() => void>(undefined);
+  const requestFrame = useCallback(() => invalidateRef.current?.(), []);
   const maxDpr = window.matchMedia('(pointer: coarse)').matches ? 1.15 : 1.45;
   const setTarget = useCallback((exhibit?: DisplayExhibit) => {
     target.current = exhibit;
@@ -212,16 +228,19 @@ export default function Museum(props: Props) {
 
   return <div className="museum-world">
     <div className="viewport" ref={viewport} onContextMenu={(event) => event.preventDefault()} data-room={room}>
-      <Canvas shadows="percentage" dpr={[1, maxDpr]} camera={{ fov: WALKTHROUGH_FOV, near: 0.075, far: 120 }} frameloop={(active || props.unlocking) && visible ? 'always' : 'demand'}
+      <Canvas shadows="percentage" dpr={[1, maxDpr]} camera={{ fov: WALKTHROUGH_FOV, near: 0.075, far: 120 }} frameloop="demand"
         gl={{ antialias: true, powerPreference: 'high-performance', toneMapping: ACESFilmicToneMapping, toneMappingExposure: 1.04 }}
-        onCreated={({ gl }) => { gl.shadowMap.autoUpdate = false; }}
+        onCreated={({ gl, invalidate }) => {
+          gl.shadowMap.autoUpdate = false;
+          invalidateRef.current = invalidate;
+        }}
         onPointerMissed={(event) => { if ((event as PointerEvent).pointerType !== 'touch') mouseLook(); }} fallback="This browser does not support a canvas.">
         <Suspense fallback={null}>
           <LoadedRoom key={room} {...props} input={input} target={target} setTarget={setTarget} />
         </Suspense>
       </Canvas>
     </div>
-    <TouchControls input={input} active={active} />
+    <TouchControls input={input} active={active} requestFrame={requestFrame} />
     {active && <>
       <div className={`reticle${focusedExhibit ? ' reticle--active' : ''}`} aria-hidden="true" />
       <aside className="movement-hints" aria-label="Walking controls">

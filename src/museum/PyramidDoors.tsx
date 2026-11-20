@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from 'react';
 import { RoundedBox } from '@react-three/drei';
+import { useThree } from '@react-three/fiber';
 import type { Group } from 'three';
 import { gsap } from '../motion';
 import { entranceZ, pyramid } from './layout';
@@ -9,6 +10,7 @@ const { doorHalfWidth, doorHeight } = pyramid;
 const openDuration = 0.78;
 
 export function PyramidDoors({ unlocking, onOpened }: { unlocking: boolean; onOpened: () => void }) {
+  const invalidate = useThree((state) => state.invalidate);
   const left = useRef<Group>(null);
   const right = useRef<Group>(null);
 
@@ -29,6 +31,7 @@ export function PyramidDoors({ unlocking, onOpened }: { unlocking: boolean; onOp
     function open(timestamp: number) {
       const progress = Math.max(0, Math.min(1, (timestamp - start) / (openDuration * 1000)));
       motion.progress(progress);
+      invalidate();
       if (progress === 1) onOpened();
       else frame = requestAnimationFrame(open);
     }
@@ -37,7 +40,7 @@ export function PyramidDoors({ unlocking, onOpened }: { unlocking: boolean; onOp
       cancelAnimationFrame(frame);
       motion.kill();
     };
-  }, [onOpened, unlocking]);
+  }, [invalidate, onOpened, unlocking]);
 
   return <group position={[0, 0.02, entranceZ + 0.05]}>
     {[-1, 1].map((side) => {

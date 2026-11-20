@@ -4,6 +4,7 @@ export type Point = { x: number; z: number };
 export type Pose = Point & { yaw: number; pitch: number };
 export type Wall = { minX: number; maxX: number; minZ: number; maxZ: number };
 export type Room = 'courtyard' | 'gallery';
+export const modelUrl = (room: Room) => `/models/${room}.glb`;
 
 const wall = (minX: number, maxX: number, minZ: number, maxZ: number): Wall => ({ minX, maxX, minZ, maxZ });
 export const { pyramid, hall } = architecture;

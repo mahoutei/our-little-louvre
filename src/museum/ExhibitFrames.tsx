@@ -3,7 +3,8 @@ import { useGLTF } from '@react-three/drei';
 import { BufferGeometry, Color, Float32BufferAttribute, Quaternion, SRGBColorSpace, Texture, TextureLoader, Vector3 } from 'three';
 import type { Ray } from 'three';
 import type { DisplayExhibit, Manifest } from '../exhibits/manifest';
-import { AimLight, modelUrl } from './Scenery';
+import { modelUrl } from './layout';
+import { AimLight } from './Scenery';
 
 export type FramePlacement = { exhibit: DisplayExhibit; position: Vector3; orientation: Quaternion; finale: boolean };
 

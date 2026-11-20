@@ -1,57 +1,66 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { PointerEvent, RefObject } from 'react';
 import type { WalkInput } from './useWalkInput';
 
-export function TouchControls({ input, active }: { input: RefObject<WalkInput>; active: boolean }) {
-  const held = useRef<number | undefined>(undefined);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
+const centered = 'translate(0px, 0px)';
+
+export function TouchControls({ input, active, requestFrame }: {
+  input: RefObject<WalkInput>; active: boolean; requestFrame: () => void;
+}) {
+  const held = useRef<{ pointer: number; x: number; y: number; radius: number }>(undefined);
+  const knob = useRef<HTMLSpanElement>(null);
+  const release = useCallback(() => {
+    if (!held.current) return;
+    held.current = undefined;
+    input.current.stick.x = 0;
+    input.current.stick.z = 0;
+    if (knob.current) knob.current.style.transform = centered;
+    requestFrame();
+  }, [input, requestFrame]);
 
   useEffect(() => {
-    function release() {
-      held.current = undefined;
-      input.current.stick = { x: 0, z: 0 };
-      setPosition({ x: 0, y: 0 });
-    }
     if (!active) release();
     window.addEventListener('blur', release);
+    window.addEventListener('pagehide', release);
     window.addEventListener('orientationchange', release);
     window.addEventListener('resize', release);
     document.addEventListener('visibilitychange', release);
     return () => {
       window.removeEventListener('blur', release);
+      window.removeEventListener('pagehide', release);
       window.removeEventListener('orientationchange', release);
       window.removeEventListener('resize', release);
       document.removeEventListener('visibilitychange', release);
     };
-  }, [active, input]);
+  }, [active, release]);
 
   function move(event: PointerEvent<HTMLDivElement>) {
-    if (held.current !== event.pointerId) return;
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const radius = bounds.width * 0.33;
-    const x = event.clientX - bounds.left - bounds.width / 2;
-    const y = event.clientY - bounds.top - bounds.height / 2;
+    const drag = held.current;
+    if (!drag || drag.pointer !== event.pointerId) return;
+    const { radius } = drag;
+    const x = event.clientX - drag.x;
+    const y = event.clientY - drag.y;
     const scale = Math.max(radius, Math.hypot(x, y));
-    input.current.stick = { x: x / scale, z: y / scale };
-    setPosition({ x: x * radius / scale, y: y * radius / scale });
+    input.current.stick.x = x / scale;
+    input.current.stick.z = y / scale;
+    if (knob.current) knob.current.style.transform = `translate(${x * radius / scale}px, ${y * radius / scale}px)`;
+    requestFrame();
   }
 
-  function release(event: PointerEvent<HTMLDivElement>) {
-    if (held.current !== event.pointerId) return;
-    held.current = undefined;
-    input.current.stick = { x: 0, z: 0 };
-    setPosition({ x: 0, y: 0 });
+  function endDrag(event: PointerEvent<HTMLDivElement>) {
+    if (held.current?.pointer === event.pointerId) release();
   }
 
   return <div className="touch-controls" hidden={!active}>
     <div className="joystick" data-testid="joystick" aria-hidden="true"
       onPointerDown={(event) => {
         if (!active || held.current !== undefined) return;
-        held.current = event.pointerId;
+        const bounds = event.currentTarget.getBoundingClientRect();
+        held.current = { pointer: event.pointerId, x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2, radius: bounds.width * 0.33 };
         event.currentTarget.setPointerCapture(event.pointerId);
         move(event);
-      }} onPointerMove={move} onPointerUp={release} onLostPointerCapture={release} onPointerCancel={release}>
-      <span className="joystick-cross" /><span className="joystick-knob" style={{ transform: `translate(${active ? position.x : 0}px, ${active ? position.y : 0}px)` }} />
+      }} onPointerMove={move} onPointerUp={endDrag} onLostPointerCapture={endDrag} onPointerCancel={endDrag}>
+      <span className="joystick-cross" /><span className="joystick-knob" ref={knob} style={{ transform: centered }} />
     </div>
   </div>;
 }

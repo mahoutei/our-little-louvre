@@ -56,7 +56,8 @@ for (const { document, gltf, name, relief, finish } of materials) {
   }
 
   await sharp(normals, { raw: { width, height, channels: 3 } })
-    .webp({ lossless: true }).toFile(fileURLToPath(new URL(`${name}-normal.webp`, destination)));
+    .webp(name === 'plaster' ? { lossless: true } : { nearLossless: true, quality: 80 })
+    .toFile(fileURLToPath(new URL(`${name}-normal.webp`, destination)));
   await sharp(roughness, { raw: { width, height, channels: 1 } })
     .resize(192, 192).webp({ quality: 82 }).toFile(fileURLToPath(new URL(`${name}-roughness.webp`, destination)));
 }

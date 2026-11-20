@@ -23,6 +23,7 @@ button:disabled { cursor: default; }
 main:focus, .photo-shell:focus, h2[tabindex]:focus { outline: none; }
 [hidden] { display: none !important; }
 img { display: block; max-width: 100%; }
+.entry-scene > picture, .gate-scene > picture { display: contents; }
 h1, h2, p { margin: 0; }
 
 .app { min-height: 100svh; }
