@@ -31,7 +31,7 @@ test('the phone walkthrough renders on input and goes idle in both rooms', async
   });
 
   await page.goto('/');
-  await page.getByRole('button', { name: 'Open the envelope' }).click();
+  await page.getByRole('button', { name: 'Skip opening' }).click();
   await page.getByRole('button', { name: 'Take the brass key' }).click();
   await expect(page.getByRole('heading', { name: 'The Courtyard' })).toBeVisible({ timeout: 30_000 });
   const modelDownloads = await page.evaluate(() => performance.getEntriesByName(new URL('/models/courtyard.glb', location.href).href)
@@ -50,6 +50,8 @@ test('the phone walkthrough renders on input and goes idle in both rooms', async
   await page.getByRole('button', { name: 'Use brass key' }).click();
   await expect(page.getByRole('heading', { name: 'The Gallery of Us' })).toBeVisible({ timeout: 30_000 });
   await expect.poll(() => drawsWhileIdle(page), { timeout: 8000 }).toBe(0);
+  await page.getByRole('button', { name: 'Visit menu' }).click();
+  await expect.poll(() => drawsWhileIdle(page), { timeout: 8000 }).toBe(0);
   before = await drawCount(page);
   await page.getByRole('button', { name: 'Reset view' }).click();
   await expect.poll(() => drawCount(page)).toBeGreaterThan(before);
@@ -67,7 +69,7 @@ test('the phone invitation uses the smaller desk image and defers 3D assets', as
   const art = page.locator('.entry-background');
   await expect.poll(() => art.evaluate((img: HTMLImageElement) => new URL(img.currentSrc).pathname))
     .toBe('/media/invitation-desk-phone.webp');
-  await expect(page.getByRole('button', { name: 'Open the envelope' })).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole('button', { name: 'Skip opening' })).toBeInViewport({ ratio: 1 });
   await page.getByRole('button', { name: 'Browse photos' }).click();
   await expect(page.getByRole('heading', { name: 'The Gallery of Us' })).toBeVisible();
   expect(deskRequests).toEqual(['/media/invitation-desk-phone.webp']);
@@ -81,5 +83,5 @@ test('a failed invitation chunk offers a working page reload', async ({ page }) 
   await expect(page.getByRole('heading', { name: 'The page couldn’t open' })).toBeVisible({ timeout: 5000 });
   await page.unroute(invitationChunk);
   await page.getByRole('button', { name: 'Reload page' }).click();
-  await expect(page.getByRole('button', { name: 'Open the envelope' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Skip opening' })).toBeVisible();
 });

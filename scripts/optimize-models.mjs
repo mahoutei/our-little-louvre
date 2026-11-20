@@ -28,8 +28,9 @@ for (const model of models) {
   const mapped = lightmapMeshes();
   await document.transform(dedup());
   // The gallery's runtime light map uses UVs that are not referenced by the GLB materials.
-  if (model === 'courtyard') await document.transform(prune({ keepLeaves: true }), weld());
-  await document.transform(textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [512, 512], quality: 86 }), meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
+  if (model === 'courtyard') await document.transform(prune({ keepLeaves: true }));
+  await document.transform(weld(), textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [512, 512], quality: 86 }),
+    meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
   if (anchors() !== before) throw new Error(`Optimization changed the ${model} exhibit anchors.`);
   if (lightmapMeshes() !== mapped) throw new Error(`Optimization changed the ${model} light map UVs.`);
   await io.write(fileURLToPath(new URL(`${model}.glb`, output)), document);

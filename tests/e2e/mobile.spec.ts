@@ -2,23 +2,23 @@ import { expect, test } from '@playwright/test';
 
 test.use({ viewport: { width: 320, height: 568 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
 
-test('the signed-in phone header leaves scene captions clear at each width and after rotation', async ({ page, context }) => {
+test('the phone visit menu and scene caption stay clear at each width and after rotation', async ({ page, context }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Open the envelope' }).tap();
+  await page.getByRole('button', { name: 'Skip opening' }).tap();
   await page.getByRole('button', { name: 'Take the brass key' }).tap();
   const caption = page.locator('.scene-caption');
   await expect(caption).toBeVisible();
-  // Demo mode omits the authenticated navigation link that caused the overlap.
-  await page.locator('.masthead-actions').evaluate((nav) => {
-    const browse = nav.querySelector('button');
-    if (browse?.lastChild instanceof Text) browse.lastChild.data = ' Browse New Wing photos';
+  // Add the signed-in Studio action to the demo menu for the layout check.
+  await page.locator('.visit-menu-panel').evaluate((nav) => {
     const link = document.createElement('a');
-    link.className = 'masthead-link masthead-link--quiet';
+    link.className = 'masthead-link';
     link.href = '/studio';
     link.textContent = 'Private studio';
     nav.append(link);
   });
+  const menu = page.getByRole('button', { name: 'Visit menu' });
+  await menu.tap();
   await page.evaluate(() => document.fonts.ready);
   const cdp = await context.newCDPSession(page);
   for (const width of [320, 390, 430, 470, 667]) {
@@ -34,6 +34,7 @@ test('the signed-in phone header leaves scene captions clear at each width and a
     const studio = (await page.getByRole('link', { name: 'Private studio' }).boundingBox())!;
     expect(studio.height).toBeGreaterThanOrEqual(44);
     expect(studio.width).toBeGreaterThanOrEqual(44);
+    expect(studio.x + studio.width).toBeLessThanOrEqual(width - (landscape ? 44 : 0));
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   }
 });
@@ -43,17 +44,17 @@ test('phone controls clear the notch, stay reachable, and fit after rotation', a
   await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 44, right: 0, bottom: 34, left: 0 } });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Open the envelope' }).tap();
+  await page.getByRole('button', { name: 'Skip opening' }).tap();
   await page.getByRole('button', { name: 'Take the brass key' }).tap();
   await page.getByRole('button', { name: 'Go to pyramid door' }).tap();
   const useKey = page.getByRole('button', { name: 'Use brass key' });
   await expect(useKey).toBeVisible();
 
-  const browse = page.getByRole('button', { name: 'Browse photos' });
+  const menu = page.getByRole('button', { name: 'Visit menu' });
   const hint = page.locator('.touch-hint');
   const actions = page.locator('.scene-actions');
   const joystick = page.getByTestId('joystick');
-  expect((await browse.boundingBox())!.y).toBeGreaterThanOrEqual(44);
+  expect((await menu.boundingBox())!.y).toBeGreaterThanOrEqual(44);
   const hintBox = (await hint.boundingBox())!;
   expect(hintBox.y + hintBox.height).toBeLessThan((await actions.boundingBox())!.y);
   const canvas = page.locator('canvas');

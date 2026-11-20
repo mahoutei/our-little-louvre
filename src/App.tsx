@@ -39,9 +39,9 @@ class MuseumBoundary extends Component<{ children: ReactNode; onFailure: () => v
   render() { return this.state.failed ? null : this.props.children; }
 }
 
-const ROOM_LABELS: Record<Room, { eyebrow: string; title: string; loading: string }> = {
-  courtyard: { eyebrow: 'After closing', title: 'The Courtyard', loading: 'Opening the courtyard…' },
-  gallery: { eyebrow: 'Private collection', title: 'The Gallery of Us', loading: 'Opening the gallery…' },
+const ROOM_LABELS: Record<Room, { title: string; loading: string }> = {
+  courtyard: { title: 'The Courtyard', loading: 'Opening the courtyard…' },
+  gallery: { title: 'The Gallery of Us', loading: 'Opening the gallery…' },
 };
 
 export function App() {
@@ -61,9 +61,12 @@ export function App() {
   const [doorRequest, setDoorRequest] = useState(0);
   const [atDoor, setAtDoor] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const load = useRef<Promise<Collection> | undefined>(undefined);
   const returnFromPhotos = useRef<'welcome' | 'museum'>('welcome');
   const region = useRef<HTMLElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const menuButton = useRef<HTMLButtonElement>(null);
   const hasLeftWelcome = useRef(false);
   const retryAttempt = useRef(0);
   const manifest = collection?.manifest;
@@ -72,6 +75,7 @@ export function App() {
 
   function showView(value: View) {
     if (value !== 'welcome') hasLeftWelcome.current = true;
+    setMenuOpen(false);
     setView(value);
     window.scrollTo(0, 0);
   }
@@ -79,6 +83,25 @@ export function App() {
   useEffect(() => {
     region.current?.focus({ preventScroll: true });
   }, [view, room]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const dismissOutside = (event: MouseEvent) => {
+      if (event.target instanceof Node && !menu.current?.contains(event.target)) setMenuOpen(false);
+    };
+    const dismissWithEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setMenuOpen(false);
+      menuButton.current?.focus();
+    };
+    document.addEventListener('click', dismissOutside);
+    document.addEventListener('keydown', dismissWithEscape);
+    return () => {
+      document.removeEventListener('click', dismissOutside);
+      document.removeEventListener('keydown', dismissWithEscape);
+    };
+  }, [menuOpen]);
 
   const loadCollection = useCallback(() => {
     if (load.current) return load.current;
@@ -168,11 +191,24 @@ export function App() {
         <button className="wordmark" onClick={welcome} aria-label="Our Little Louvre, welcome">
           <img src="/pyramid.svg" alt="" width="35" height="35" /> <span>Our Little Louvre</span>
         </button>
-        <nav className="masthead-actions" aria-label="Museum">
-          {view === 'photos' ? <button className="masthead-link" onClick={() => showView(returnFromPhotos.current)}><Icon name="back" /> {returnFromPhotos.current === 'museum' ? 'Back to museum' : 'Back to invitation'}</button>
-            : <button className="masthead-link" onClick={browse}><Icon name="collection" /> Browse photos</button>}
+        {view === 'museum' ? <div ref={menu} className="visit-menu" onBlur={(event) => {
+          if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) setMenuOpen(false);
+        }}>
+          <button ref={menuButton} className="button button--glass" type="button" aria-expanded={menuOpen} aria-controls="visit-options"
+            onClick={() => setMenuOpen(!menuOpen)}><Icon name={menuOpen ? 'close' : 'menu'} /> Visit menu</button>
+          <nav id="visit-options" className="visit-menu-panel" aria-label="Museum" hidden={!menuOpen}>
+            <button className="masthead-link" type="button" onClick={browse}><Icon name="collection" /> Browse photos</button>
+            <button className="masthead-link" type="button" disabled={loading || failed || unlocking} onClick={() => {
+              setReset((current) => current + 1);
+              setMenuOpen(false);
+              menuButton.current?.focus();
+            }}><Icon name="reset" /> Reset view</button>
+            {!demo && <a className="masthead-link" href="/studio">Private studio</a>}
+          </nav>
+        </div> : <nav className="masthead-actions" aria-label="Museum">
+          <button className="masthead-link" onClick={() => showView(returnFromPhotos.current)}><Icon name="back" /> {returnFromPhotos.current === 'museum' ? 'Back to museum' : 'Back to invitation'}</button>
           {!auth.demo && <a className="masthead-link masthead-link--quiet" href="/studio">Private studio</a>}
-        </nav>
+        </nav>}
       </header>}
       {view === 'welcome' && <Welcome focusRegion={region} animateEntrance={!hasLeftWelcome.current} onStart={start} onBrowse={browse} />}
       {view === 'photos' && (
@@ -183,11 +219,12 @@ export function App() {
         </div>
       )}
       {(view === 'museum' || visited) && (
-        <main className="walkthrough" id={view === 'museum' ? 'main-content' : undefined} ref={view === 'museum' ? region : undefined} tabIndex={-1} hidden={view !== 'museum'}>
+        <main className={`walkthrough${menuOpen ? ' walkthrough--menu' : ''}`} id={view === 'museum' ? 'main-content' : undefined} ref={view === 'museum' ? region : undefined} tabIndex={-1} hidden={view !== 'museum'}>
+          {menuOpen && <div className="visit-menu-backdrop" aria-hidden="true" onPointerDown={(event) => event.preventDefault()} />}
           {visited && !failed && <MuseumBoundary onFailure={failWalkthrough}>
             <Suspense fallback={null}>
               <Museum room={room} manifest={manifest} wingRooms={wingRooms}
-                active={view === 'museum' && !selection && !loading && !unlocking} visible={view === 'museum'} reset={reset}
+                active={view === 'museum' && !selection && !loading && !unlocking && !menuOpen} visible={view === 'museum'} reset={reset}
                 doorRequest={doorRequest} unlocking={unlocking} onDoorProximity={setAtDoor} onUnlock={unlockDoor}
                 onReady={setReady} onDoorOpened={enterGallery} onOpen={openExhibit} onFailure={failWalkthrough} />
             </Suspense>
@@ -202,14 +239,13 @@ export function App() {
           </div>}
           {!loading && !failed && <>
             <RoomReveal key={room} />
-            <div className="scene-caption"><p className="eyebrow">{roomLabel.eyebrow}</p><h1>{roomLabel.title}</h1></div>
-            <div className="scene-actions">
-              <button className="button button--glass reset-view" type="button" aria-label="Reset view" disabled={unlocking} onClick={() => setReset((current) => current + 1)}><Icon name="reset" size={17} /><span>Reset view</span></button>
-              {room === 'courtyard' && <button className="button button--gold" type="button" disabled={unlocking}
+            <div className="scene-caption"><h1>{roomLabel.title}</h1></div>
+            {room === 'courtyard' && <div className="scene-actions">
+              <button className="button button--gold" type="button" disabled={unlocking}
                 onClick={atDoor ? unlockDoor : () => setDoorRequest((current) => current + 1)}>
                 <Icon name="key" />{unlocking ? 'Unlocking…' : atDoor ? 'Use brass key' : 'Go to pyramid door'}
-              </button>}
-            </div>
+              </button>
+            </div>}
             {room === 'courtyard' && atDoor && !unlocking && <p className="door-prompt">Press <kbd>E</kbd> or select Use brass key.</p>}
             {room === 'gallery' && contentFailed && <aside className="content-error">The exhibits couldn’t load. <button onClick={retryCollection}>Try again</button></aside>}
           </>}

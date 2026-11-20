@@ -5,6 +5,7 @@ A phone-first, first-person museum for two. Enter through the blue-hour courtyar
 ## A museum for two
 
 - Opening the museum requires a magic link sent to one of two addresses: `OWNER_EMAIL` and `PARTNER_EMAIL`. There are no public accounts and no strangers.
+- The invitation opens with three short lines. You can pause the opening, skip to the envelope, or browse photos right away. **Take the brass key** begins the courtyard visit.
 - The **Private studio** at `/studio` is where either of you can upload a photograph, edit its label, remove it, rewrite the letter, and change the name shown on your labels.
 - New photographs hang in the **New Wing**, through the spotlit arch on the right just before the letter exhibit. The same photos are available under **Browse photos**. New photos fill free frames before another room opens, up to six frames per room and 24 rooms.
 - Photographs live in a private Supabase Storage bucket. The API issues short-lived signed URLs for display after it has checked your session.
@@ -92,7 +93,7 @@ Saves are versioned. If the other person saved the letter after you opened it, y
 
 ## The studio
 
-The masthead’s **Private studio** link opens `/studio`. Both members have the same permissions.
+Choose **Private studio** from the walkthrough’s **Visit menu** or the photo browser’s header. Both members have the same permissions.
 
 - **Hang a memory** — choose or drop a photograph. The browser rotates, downsizes, and re-encodes it, then uploads the display copy and thumbnail directly to the private bucket through one-use signed URLs. The API verifies the upload before creating the exhibit.
 - **The letter** — edit the title and up to twelve paragraphs. The saved letter replaces the final exhibit’s letter for both of you.

@@ -95,14 +95,20 @@ def column(name, x, z, y0, y1, width, ornate=False):
             box('Trim', x+i*width*0.17, center, z+width*0.37, width*0.045, y1-y0-0.55, 0.027)
 
 
-def build_meshes():
+def build_meshes(shared_edges=False):
     for name, faces in parts.items():
         vertices, polygons = [], []
+        indices = {}
         for polygon, _ in faces:
-            start = len(vertices)
             # glTF Y-up coordinates become Blender Z-up and negative Y depth.
-            vertices.extend((x, -z, y) for x, y, z in polygon)
-            polygons.append(tuple(range(start, len(vertices))))
+            corners = []
+            for x, y, z in polygon:
+                point = (x, -z, y)
+                index = indices.setdefault(tuple(round(axis, 6) for axis in point), len(vertices)) if shared_edges else len(vertices)
+                if index == len(vertices):
+                    vertices.append(point)
+                corners.append(index)
+            polygons.append(corners)
         mesh = bpy.data.meshes.new(name)
         mesh.from_pydata(vertices, [], polygons)
         mesh.update()
@@ -113,6 +119,8 @@ def build_meshes():
         for polygon, (_, coords) in zip(mesh.polygons, faces):
             for loop, uv in zip(polygon.loop_indices, coords):
                 uv_map.data[loop].uv = uv
+        if shared_edges:
+            mesh.validate(clean_customdata=False)
 
 
 def anchor(name, x, y, z, yaw):
@@ -194,9 +202,42 @@ def courtyard():
 def frame_recess(side, wall_x, z):
     box('Deep Stone', side*(wall_x-0.064), 2.75, z, 0.094, 2.86, 2.78)
     box('Warm Plaster', side*(wall_x-0.117), 2.75, z, 0.037, 2.68, 2.6)
+    for edge in (-1, 1):
+        box('Gilding', side*(wall_x-0.136), 2.75, z+edge*1.335, 0.014, 2.76, 0.018)
+        box('Gilding', side*(wall_x-0.136), 2.75+edge*1.376, z, 0.014, 0.018, 2.68)
 
 
-def wing_portal(side, wall_x, z, door, wall_height):
+def floor_band(name, x, z, width, length, repeat, along_hall=False):
+    points = [(-width/2, length/2), (width/2, length/2), (width/2, -length/2), (-width/2, -length/2)]
+    world = [(x-a, 0.002, z+b) if along_hall else (x+b, 0.002, z+a) for a, b in points]
+    face(name, world[::-1], [(0, repeat), (1, repeat), (1, 0), (0, 0)])
+
+
+def pilaster(side, wall, z, height):
+    x = side*(wall-0.04)
+    box('Trim', x, height/2, z, 0.20, height, 0.42)
+    for y, tall, deep, wide in ((0.08,0.16,0.28,0.53),(0.22,0.12,0.26,0.49),
+                               (0.35,0.09,0.24,0.46),(height-0.36,0.09,0.24,0.47),
+                               (height-0.21,0.19,0.28,0.53),(height-0.06,0.11,0.32,0.58)):
+        box('Trim', x, y, z, deep, tall, wide)
+    for flute in range(5):
+        start = z+(flute-2.5)*0.066
+        profile = [(side*(wall-0.174+0.028*math.sin(step*math.pi/4)), start+step*0.0165) for step in range(5)]
+        for (x0, z0), (x1, z1) in zip(profile, profile[1:]):
+            surface = [(x0,0.39,z0), (x1,0.39,z1), (x1,height-0.4,z1), (x0,height-0.4,z0)]
+            face('Fluting', surface[::side])
+
+
+def rosette(point, radius, name='Gilding'):
+    for petal in range(6):
+        angle = petal*math.pi/3
+        outline = [(0.28,-0.15), (0.68,-0.24), (1,0), (0.68,0.24), (0.28,0.15)]
+        face(name, [point(radius*(u*math.cos(angle)-v*math.sin(angle)),
+                          radius*(u*math.sin(angle)+v*math.cos(angle))) for u, v in outline])
+    face(name, [point(0.26*radius*math.cos(i*math.pi/3), 0.26*radius*math.sin(i*math.pi/3)) for i in range(6)])
+
+
+def wing_portal(side, wall_x, z, door, wall_height, featured):
     half = door['halfWidth']
     spring, rise = door['springHeight'], door['rise']
     center = side * (wall_x + 0.19)
@@ -206,8 +247,13 @@ def wing_portal(side, wall_x, z, door, wall_height):
         a, b = math.pi*index/segments, math.pi*(index+1)/segments
         x0, x1 = -z-half*math.cos(a), -z-half*math.cos(b)
         y0, y1 = spring+rise*math.sin(a), spring+rise*math.sin(b)
-        shape('Limestone', [(x0,y0), (x1,y1), (x1,wall_height), (x0,wall_height)], center, 0.38, lateral=True)
+        shape('Alcove Stone' if featured else 'Limestone', [(x0,y0), (x1,y1), (x1,wall_height), (x0,wall_height)], center, 0.38, lateral=True)
     arch('Trim', -z, spring, center, half+0.23, rise+0.19, 0.19, 0.67, segments, lateral=True)
+    if featured:
+        arch('Gilding', -z, spring, side*(wall_x-0.155), half+0.202, rise+0.161, 0.035, 0.04, segments, lateral=True)
+        box('Alcove Stone', wall_x-0.18, spring+rise+0.185, z, 0.12, 0.33, 0.23)
+        for offset in (-0.96, 0.96):
+            rosette(lambda u, v: (wall_x-0.014, spring+0.84+v, z+offset+u), 0.11)
     for edge in (-1, 1):
         jamb_z = z + edge * (half + 0.115)
         box('Trim', center, spring/2, jamb_z, 0.67, spring, 0.22)
@@ -224,7 +270,11 @@ def gallery_wing(hall, wing):
     middle, center = (near+far)/2, side*(inner+outer)/2
     spring, rise = 3.28, 1.28
     width = outer-inner
-    box('Parquet', center, -0.11, middle, width, 0.21, near-far)
+    radius = width/2
+    box('Porphyry', center, -0.13, middle, width, 0.25, near-far)
+    for edge in (-1, 1):
+        floor_band('Intarsia', center+edge*radius*0.77, middle, 0.39, near-far, round((near-far)/0.62), True)
+    box('Parquet', center, -0.11, middle, width*0.69, 0.215, near-far)
     box('Limestone', side*(outer+0.17), spring/2, middle, 0.34, spring, near-far+0.46)
     box('Warm Plaster', side*(outer-0.022), 1.96, middle, 0.05, 2.48, near-far)
     box('Deep Stone', side*(outer-0.044), 0.38, middle, 0.10, 0.76, near-far)
@@ -236,19 +286,68 @@ def gallery_wing(hall, wing):
         box('Trim', center, 0.73, z-offset*0.055, width, 0.09, 0.11)
 
     # A lower barrel vault gives the side galleries their own scale and leaves the main hall legible.
-    radius = width/2
     for index in range(24):
         a, b = math.pi*index/24, math.pi*(index+1)/24
         x0, x1 = center+radius*math.cos(a), center+radius*math.cos(b)
         y0, y1 = spring+rise*math.sin(a), spring+rise*math.sin(b)
         face('Vault', [(x0,y0,near), (x1,y1,near), (x1,y1,far), (x0,y0,far)])
     for z in (near-0.28, middle, far+0.28):
-        arch('Trim', center, spring, z, radius, rise, 0.14, 0.27, 20)
+        arch('Trim', center, spring, z, radius, rise, 0.14, 0.27, 24)
+        arch('Gilding', center, spring, z+0.144, radius-0.04, rise-0.025, 0.029, 0.02, 24)
     for exhibit in wing['exhibits']:
         z = exhibit['z']
         if exhibit.get('recess', True):
             frame_recess(side, outer, z)
         anchor(exhibit['anchor'], side*(outer-0.18), 2.12, z, -side*math.pi/2)
+
+
+def hall_vault(hall):
+    radius, spring = hall['halfWidth'], hall['springHeight']
+    rim_inset = 0.092
+
+    def point(theta, z, inset=0):
+        return ((radius-inset)*math.cos(theta), spring+(3.06-inset)*math.sin(theta), z)
+
+    for near, far, skylight in [(hall['frontZ'],5,False),(5,-3,True),(-3,-11,True),(-11,-19,True),(-19,hall['alcoveZ'],False)]:
+        rows = max(1, round((near-far)/2.75))
+        for course in range(12):
+            a, b = course*math.pi/12, (course+1)*math.pi/12
+            if skylight and course in (5, 6):
+                for segment in range(3):
+                    t0, t1 = a+segment*math.pi/36, a+(segment+1)*math.pi/36
+                    face('Skylight', [point(t0,near,rim_inset), point(t1,near,rim_inset),
+                                      point(t1,far,rim_inset), point(t0,far,rim_inset)])
+                continue
+            for row in range(rows):
+                z0 = near+(far-near)*row/rows
+                z1 = near+(far-near)*(row+1)/rows
+
+                def ring(dtheta, dz, inset):
+                    return [point(a+dtheta,z0-dz,inset), point(b-dtheta,z0-dz,inset),
+                            point(b-dtheta,z1+dz,inset), point(a+dtheta,z1+dz,inset)]
+
+                rim = ring(0, 0, rim_inset)
+                bead = ring(0.014, 0.091, 0.137)
+                slope = ring(0.024, 0.148, 0.102)
+                panel = ring(0.030, 0.218, 0.008)
+                for name, outer, inner in [('Vault', rim, bead), ('Trim', bead, slope), ('Vault', slope, panel)]:
+                    for i in range(4):
+                        j = (i+1) % 4
+                        face(name, [outer[i], outer[j], inner[j], inner[i]])
+                face('Coffer', panel)
+                if course in (1,3,8,10) and row % 2 == 0:
+                    center = [(u+v)/2 for u,v in zip(panel[0],panel[2])]
+                    horizontal = Vector(panel[0])-Vector(panel[1])
+                    horizontal.normalize()
+                    rosette(lambda u, v: (center[0]+u*horizontal.x, center[1]+u*horizontal.y-0.016, center[2]+v), 0.19)
+
+        if skylight:
+            for x in (-1.35,-0.675,0,0.675,1.35):
+                theta = math.acos(x/(radius-rim_inset))
+                _, y, z = point(theta, (near+far)/2, rim_inset)
+                box('Window Metal', x, y-0.022, z, 0.07, 0.08, near-far)
+            for index in range(1, 8):
+                box('Window Metal', 0, spring+2.91-rim_inset, near-index, 2.76, 0.08, 0.065)
 
 
 def gallery():
@@ -257,6 +356,10 @@ def gallery():
     spring = hall['springHeight']
     alcove = hall['alcoveHalfWidth']
     box('Parquet', 0, -0.11, (front+back)/2, 2*h, 0.21, front-back+0.1)
+    for side in (-1, 1):
+        floor_band('Floor Inlay', side*(h-0.97), (front+end)/2, 0.66, front-end, 30, True)
+    floor_band('Floor Inlay', 0, front-0.42, 0.60, h*2-2.60, 8)
+    floor_band('Floor Inlay', 0, end+0.42, 0.60, h*2-2.60, 8)
     wing_exhibits = {item['anchor'] for wing in hall['wings'] for item in wing['exhibits']}
     door = hall['wingDoor']
     for wing in hall['wings']:
@@ -270,30 +373,44 @@ def gallery():
             middle, length = (near+far)/2, near-far
             box('Limestone', side*(h+0.19), spring/2, middle, 0.38, spring, length)
             box('Warm Plaster', side*(h-0.025), 3.02, middle, 0.08, 3.74, length)
-            box('Deep Stone', side*(h-0.02), 0.47, middle, 0.12, 0.93, length)
+            box('Porphyry', side*(h-0.02), 0.47, middle, 0.12, 0.93, length)
             for y, thick, projection in [(0.14,0.15,0.24),(0.95,0.16,0.22),(1.1,0.06,0.15),(4.82,0.11,0.16),(5.03,0.21,0.38),(5.25,0.13,0.31)]:
                 box('Trim', side*(h-0.09), y, middle, projection, thick, length)
             for y in (0.27, 4.62):
                 box('Deep Stone', side*(h-0.18), y, middle, 0.09, 0.042, length)
+            box('Gilding', side*(h-0.204), 5.03, middle, 0.18, 0.029, length)
             wing_near, wing_far = min(near, wing['nearZ']), max(far, wing['farZ'])
             if wing_near > wing_far:
                 for y, thick in ((0.16, 0.22), (0.78, 0.09), (3.15, 0.13)):
                     box('Trim', side*(h+0.40), y, (wing_near+wing_far)/2, 0.13, thick, wing_near-wing_far)
         for z, spec in openings:
-            wing_portal(side, h, z, spec, spring)
+            wing_portal(side, h, z, spec, spring, spec is hall['salon'])
         gallery_wing(hall, wing)
         box('Limestone', side*(h+alcove)/2, spring/2, end, h-alcove, spring, 0.52)
         box('Warm Plaster', side*(alcove+0.1), 2.0, (end+back)/2, 0.2, 4.0, end-back+0.2)
         box('Trim', side*(alcove+.06), 0.18, (end+back)/2, 0.22, 0.36, end-back+0.2)
         box('Trim', side*(alcove+0.06), 3.4, (end+back)/2, 0.28, 0.16, end-back+0.2)
+        box('Porphyry', side*(alcove-0.018), 0.57, (end+back)/2, 0.063, 0.53, end-back)
+        box('Gilding', side*(alcove-0.058), 0.86, (end+back)/2, 0.058, 0.042, end-back)
     box('Limestone', 0, 3.7, front+0.14, 2*h, 7.4, 0.35)
     box('Warm Plaster', 0, 2.4, back-0.1, 2*alcove+0.3, 4.8, 0.36)
-    box('Deep Stone', 0, 2.36, back+0.085, 3.18, 3.86, 0.13)
+    box('Alcove Stone', 0, 2.36, back+0.085, 3.45, 3.86, 0.13)
     box('Warm Plaster', 0, 2.38, back+0.18, 2.87, 3.56, 0.12)
     box('Trim', 0, 4.12, (end+back)/2, 2*alcove+0.2, 0.25, end-back+0.18)
-    arch('Trim', 0, 2.62, end+0.12, alcove+0.27, 1.36, 0.25, 0.45)
+    arch('Alcove Stone', 0, 2.62, end+0.12, alcove+0.29, 1.39, 0.26, 0.45)
+    arch('Gilding', 0, 2.62, end+0.35, alcove+0.20, 1.30, 0.033, 0.025)
     for side in (-1, 1):
-        column('Trim', side*(alcove+0.16), end+0.13, 0, 2.68, 0.33)
+        column('Alcove Stone', side*(alcove+0.17), end+0.21, 0, 2.68, 0.33, True)
+        box('Alcove Stone', side*1.585, 2.36, back+0.245, 0.24, 3.86, 0.19)
+        box('Gilding', side*1.475, 2.37, back+0.318, 0.026, 3.55, 0.058)
+        for height in (0.66, 0.83, 3.76, 3.93):
+            box('Trim', side*1.585, height, back+0.26, 0.32, 0.095, 0.24)
+        for height in (1.15, 1.55, 3.22, 3.57):
+            rosette(lambda u,v: (side*1.585+u,height+v,back+0.349), 0.08)
+        rosette(lambda u,v: (side*2.58+u,3.47+v,end+0.265), 0.22)
+    box('Alcove Stone', 0, 0.48, back+0.225, 3.2, 0.18, 0.26)
+    box('Alcove Stone', 0, 4.04, back+0.225, 3.2, 0.18, 0.24)
+    box('Gilding', 0, 3.97, back+0.332, 2.93, 0.035, 0.06)
     # The partition above the final opening follows the interior barrel.
     for i in range(24):
         a, b = math.pi*i/24, math.pi*(i+1)/24
@@ -309,27 +426,9 @@ def gallery():
         arch('Trim', 0, spring, z, h, 3.06, 0.29, 0.48)
         arch('Deep Stone', 0, spring, z+0.27, h-0.02, 3.02, 0.08, 0.08)
         for side in (-1, 1):
-            column('Trim', side*(h-0.14), z, 0, spring, 0.36)
+            pilaster(side, h, z, spring)
 
-    # Coffered barrel vault segmented at the skylight edges.
-    cuts = [i * math.pi / 36 for i in range(37)]
-    for z0, z1, has_skylight in [(front,5,False),(5,-3,True),(-3,-11,True),(-11,-19,True),(-19,end,False)]:
-        for i, (a, b) in enumerate(zip(cuts, cuts[1:])):
-            x0, x1 = h*math.cos(a), h*math.cos(b)
-            y0, y1 = spring+3.06*math.sin(a), spring+3.06*math.sin(b)
-            name = 'Skylight' if has_skylight and 15 <= i < 21 else 'Vault'
-            face(name, [(x0,y0,z0), (x1,y1,z0), (x1,y1,z1), (x0,y0,z1)])
-        if has_skylight:
-            for x in (-1.38,-0.69,0,0.69,1.38):
-                box('Window Metal', x, spring+3.03-abs(x)*0.075, (z0+z1)/2, 0.07, 0.08, z0-z1)
-            for index in range(1, 8):
-                box('Window Metal', 0, spring+2.91, z0-index, 2.79, 0.08, 0.065)
-            for i in (5, 10, 15, 21, 26, 31):
-                theta = cuts[i]
-                x, y = (h-0.028)*math.cos(theta), spring+3.03*math.sin(theta)
-                box('Trim', x, y, (z0+z1)/2, 0.10, 0.11, z0-z1)
-            for z in (z0-2.65, z0-5.35):
-                arch('Trim', 0, spring, z, h, 3.07, 0.075, 0.08, 36)
+    hall_vault(hall)
     for bay, line in enumerate(hall['bayLines'][:-1]):
         for i, (side, offset) in enumerate([(-1,2.28),(1,2.28),(-1,5.62),(1,5.62)]):
             name = f'EXHIBIT_{bay*4+i+1:02}'
@@ -368,27 +467,38 @@ def aimed_light(name, kind, position, target, color, power, size):
 def bake_gallery():
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
-    scene.cycles.samples = 144
+    scene.cycles.samples = 96
     scene.cycles.sample_clamp_indirect = 1.5
     scene.cycles.max_bounces = 5
-    set_world((0.26, 0.35, 0.53), 0.1)
-    warm, cool = (1, 0.74, 0.5), (0.62, 0.76, 1)
-    lights = [aimed_light('Skylight spill', 'AREA', (0, 7.9, z), (0, 0, z), cool, 126, 3.1) for z in (1, -7, -15)]
-    lights.append(aimed_light('Entry spill', 'AREA', (0, 4.8, 6.8), (0, 1.4, 1), warm, 62, 2.35))
+    set_world((0.40, 0.43, 0.52), 0.12)
+    warm, daylight = (1, 0.78, 0.59), (0.88, 0.91, 1)
+    lights = [aimed_light('Skylight spill', 'AREA', (0, 7.86, z), (0, 0, z), daylight, 285, 3.1) for z in (1, -7, -15)]
+    for z in (2, -6, -14, -20):
+        lights.append(aimed_light('Reflected hall light', 'AREA', (0, 4.65, z), (0, 7.9, z), warm, 98, 2.9))
+    lights.append(aimed_light('Entry spill', 'AREA', (0, 4.8, 6.8), (0, 1.4, 1), warm, 96, 2.35))
     finale_z = -bpy.data.objects['EXHIBIT_FINALE'].location.y
-    lights.append(aimed_light('Alcove ceiling spill', 'AREA', (0, 3.95, finale_z+1.45), (0, 0, finale_z+0.4), warm, 36, 1.15))
+    lights.append(aimed_light('Alcove ceiling spill', 'AREA', (0, 3.78, finale_z+1.7), (0, 0, finale_z+0.4), warm, 52, 1.15))
+    lights.append(aimed_light('Finale surround spill', 'AREA', (0, 3.9, finale_z+2.6), (0, 2.25, finale_z), (1, 0.69, 0.44), 113, 1.28))
+    lights.append(aimed_light('Alcove arch spill', 'AREA', (0, 4.7, -20.9), (0, 2.6, -23), warm, 106, 1.42))
     hall = architecture['hall']
     for wing in hall['wings']:
         side = wing['side']
         center = side * (hall['halfWidth'] + wing['outerX']) / 2
-        tint = warm if side < 0 else (0.77, 0.83, 1)
+        tint = warm if side < 0 else (1, 0.86, 0.7)
         for z in wing['doorZ']:
-            lights.append(aimed_light('Side gallery spill', 'AREA', (center, 3.65, z), (side*hall['halfWidth'], 0.9, z), tint, 47, 1.44))
+            lights.append(aimed_light('Side gallery spill', 'AREA', (center, 3.46, z), (center, 0.85, z-0.4), tint, 82, 1.36))
+        for exhibit in wing['exhibits']:
+            z = exhibit['z']
+            lights.append(aimed_light('Reflected side gallery light', 'AREA', (center, 2.83, z), (side*wing['outerX'], 3.6, z), tint, 27, 0.92))
     salon_z = hall['salon']['z']
-    lights.append(aimed_light('New Wing threshold spill', 'AREA', (hall['halfWidth']+0.8, 3.2, salon_z), (hall['halfWidth']-1.4, 0.3, salon_z), warm, 62, 1.3))
+    lights.append(aimed_light('New Wing threshold spill', 'AREA', (hall['halfWidth']+0.65, 2.95, salon_z), (hall['halfWidth']-1.4, 0.3, salon_z), warm, 115, 1.05))
+    lights.append(aimed_light('New Wing arch spill', 'AREA', (hall['halfWidth']-1.8, 3.95, salon_z+0.1), (hall['halfWidth']-0.05, 2.65, salon_z), warm, 91, 0.94))
     # Picture lights stay with the runtime exhibits so empty anchors do not cast a spill.
 
-    receivers = [bpy.data.objects[name] for name in ('Limestone', 'Warm Plaster', 'Trim', 'Deep Stone', 'Parquet', 'Vault')]
+    receivers = [bpy.data.objects[name] for name in (
+        'Limestone', 'Warm Plaster', 'Trim', 'Deep Stone', 'Parquet', 'Vault',
+        'Coffer', 'Gilding', 'Floor Inlay', 'Porphyry', 'Intarsia', 'Alcove Stone', 'Fluting',
+    )]
     bpy.ops.object.select_all(action='DESELECT')
     for obj in receivers:
         channel = obj.data.uv_layers.new(name='BakedLight', do_init=False)
@@ -401,7 +511,7 @@ def bake_gallery():
     bpy.ops.mesh.select_all(action='SELECT')
     bpy.ops.uv.smart_project(angle_limit=math.radians(65), island_margin=0.0)
     bpy.ops.uv.select_all(action='SELECT')
-    bpy.ops.uv.pack_islands(margin_method='FRACTION', margin=0.0035)
+    bpy.ops.uv.pack_islands(margin_method='FRACTION', margin=0.0025)
     bpy.ops.object.mode_set(mode='OBJECT')
 
     atlas = bpy.data.images.new('Gallery bounce', width=2048, height=2048, alpha=False, float_buffer=True)
@@ -457,21 +567,30 @@ def export(name, builder):
     parts.clear()
     materials.clear()
     material('Pavers', '958c7c', 0.91, texture='pavers')
-    material('Limestone', 'b8aa97', 0.84, texture='limestone')
-    material('Warm Plaster', 'bca48f', 0.82, texture='plaster')
-    material('Parquet', '986b44', 0.58, texture='parquet')
-    material('Trim', 'd3bd9d', 0.78)
-    material('Deep Stone', '897564', 0.84)
-    material('Vault', 'c3ad92', 0.83)
+    interior = name == 'gallery'
+    material('Limestone', 'b8aa97', 0.84, texture='gallery-stone' if interior else 'limestone')
+    material('Trim', 'e5d4b6' if interior else 'd3bd9d', 0.78)
+    material('Deep Stone', '534035' if interior else '897564', 0.84)
     material('Roof', '343c46', 0.76)
     material('Dark Glass', '222a33', 0.28, 0.18)
     material('Window Metal', '544334', 0.45, 0.31)
     material('Window Light', 'c98d53', 0.48, glow=0.33)
     material('Skylight', 'b2c4d7', 0.75, glow=0.63)
     material('Pool', '28414b', 0.2, 0.23)
+    if interior:
+        material('Warm Plaster', '873b3f', 0.88, texture='garnet')
+        material('Parquet', '775239', 0.62, texture='walnut')
+        material('Vault', 'beaa89', 0.84)
+        material('Coffer', 'e9dcc7', 0.88)
+        material('Gilding', 'b38b51', 0.52, 0.23)
+        material('Floor Inlay', 'b3a38b', 0.65, texture='floor-inlay')
+        material('Porphyry', '644849', 0.73)
+        material('Intarsia', '684731', 0.67, texture='intarsia')
+        material('Alcove Stone', 'd3b58c', 0.77)
+        material('Fluting', 'd7c2a3', 0.77)
     builder()
-    build_meshes()
-    if name == 'gallery':
+    build_meshes(shared_edges=interior)
+    if interior:
         bake_gallery()
     bpy.ops.export_scene.gltf(filepath=str(output / f'{name}.glb'), export_format='GLB', export_yup=True)
     if name == 'courtyard':

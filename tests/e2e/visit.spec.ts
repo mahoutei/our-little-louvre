@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
 async function takeBrassKey(page: Page) {
-  await page.getByRole('button', { name: 'Open the envelope' }).click();
+  await page.getByRole('button', { name: 'Skip opening' }).click();
   await page.getByRole('button', { name: 'Take the brass key' }).click();
 }
 
@@ -108,6 +108,7 @@ test('the rendered gallery is walkable and the finale opens in place', async ({ 
   await expect(dialog).toHaveAccessibleName('A Letter for You');
   await page.keyboard.press('Escape');
   await expect(inspect).toBeFocused();
+  await page.getByRole('button', { name: 'Visit menu' }).click();
   await page.getByRole('button', { name: 'Reset view' }).click();
   await expect(inspect).toHaveCount(0);
 });

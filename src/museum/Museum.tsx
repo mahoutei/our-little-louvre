@@ -267,7 +267,12 @@ export default function Museum(props: Props) {
         if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) return;
         onOpen(focusedExhibit);
       }}>
-      {locked && <kbd aria-hidden="true">E</kbd>}<Icon name="collection" /> <span>{focusedExhibit.title}</span> <Icon name="arrow" />
+      {locked && <kbd aria-hidden="true">E</kbd>}<Icon name={focusedExhibit.published ? 'collection' : 'letter'} />
+      <span className="inspect-copy">
+        <span className="inspect-action">{focusedExhibit.published ? 'View photograph' : 'Read the letter'}</span>
+        <span>{focusedExhibit.title}</span>
+      </span>
+      <Icon name="arrow" />
     </button>}
   </div>;
 }

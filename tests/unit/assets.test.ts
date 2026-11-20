@@ -3,7 +3,7 @@ import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'meshoptimizer';
 import { BufferGeometry, DoubleSide, Float32BufferAttribute, Matrix4, Mesh, MeshBasicMaterial, Raycaster, Vector3 } from 'three';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parseManifest } from '../../src/exhibits/manifest';
 import { hall } from '../../src/museum/layout';
 
@@ -27,12 +27,14 @@ it('keeps the first courtyard model small without dropping surfaces or triangles
 });
 
 describe('exported gallery', () => {
-  it('has a real open arch from the main hall into the New Wing', async () => {
+  const material = new MeshBasicMaterial({ side: DoubleSide });
+  let shells: Mesh[] = [];
+
+  beforeAll(async () => {
     await MeshoptDecoder.ready;
     const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder });
     const model = await io.read('public/models/gallery.glb');
-    const material = new MeshBasicMaterial({ side: DoubleSide });
-    const shells = model.getRoot().listNodes().flatMap((node) => (node.getMesh()?.listPrimitives() ?? []).map((primitive) => {
+    shells = model.getRoot().listNodes().flatMap((node) => (node.getMesh()?.listPrimitives() ?? []).map((primitive) => {
       const geometry = new BufferGeometry();
       const positions = primitive.getAttribute('POSITION')!;
       const decoded = new Float32Array(positions.getCount() * 3);
@@ -42,17 +44,35 @@ describe('exported gallery', () => {
       const indices = primitive.getIndices()?.getArray();
       if (indices) geometry.setIndex(Array.from(indices));
       const mesh = new Mesh(geometry, material);
+      mesh.name = primitive.getMaterial()?.getName() ?? '';
       mesh.applyMatrix4(new Matrix4().fromArray(node.getWorldMatrix()));
       mesh.updateMatrixWorld();
       return mesh;
     }));
-    const sightline = (z: number) => new Raycaster(new Vector3(hall.halfWidth - 1.2, 1.6, z), new Vector3(1, 0, 0), 0, 2.2);
-    try {
-      expect(sightline(hall.salon.z).intersectObjects(shells)).toHaveLength(0);
-      expect(sightline(hall.salon.z + hall.salon.halfWidth + 0.22).intersectObjects(shells).length).toBeGreaterThan(0);
-    } finally {
-      shells.forEach((mesh) => mesh.geometry.dispose());
-      material.dispose();
+  });
+
+  afterAll(() => {
+    shells.forEach((mesh) => mesh.geometry.dispose());
+    material.dispose();
+  });
+
+  it('has a real open arch from the main hall into the New Wing', () => {
+    const sightline = (z: number, y = 1.6) => new Raycaster(new Vector3(hall.halfWidth - 1.2, y, z), new Vector3(1, 0, 0), 0, 2.2);
+    for (const offset of [-1, 0, 1]) {
+      expect(sightline(hall.salon.z + offset * (hall.salon.halfWidth - 0.08)).intersectObjects(shells)).toHaveLength(0);
+    }
+    expect(sightline(hall.salon.z, hall.salon.springHeight + hall.salon.rise - 0.2).intersectObjects(shells)).toHaveLength(0);
+    expect(sightline(hall.salon.z + hall.salon.halfWidth + 0.22).intersectObjects(shells).length).toBeGreaterThan(0);
+  });
+
+  it('joins the skylight glazing and coffers without gaps between the bays', () => {
+    const roof = shells.filter(({ name }) => ['Skylight', 'Vault', 'Coffer', 'Trim'].includes(name));
+    for (const side of [-1, 1]) {
+      for (const z of [1, -7, -15]) {
+        // This slope passes through the glazing edge on the elliptical vault.
+        const ray = new Raycaster(new Vector3(0, hall.springHeight, z), new Vector3(side, 2.14, 0).normalize());
+        expect(ray.intersectObjects(roof).length).toBeGreaterThan(0);
+      }
     }
   });
 
@@ -62,13 +82,19 @@ describe('exported gallery', () => {
     const content = JSON.parse(file.subarray(20, 20 + chunkBytes).toString('utf8')) as {
       meshes: { name: string; primitives: { attributes: Record<string, number> }[] }[];
     };
-    for (const surface of ['Parquet', 'Warm Plaster', 'Limestone', 'Trim', 'Deep Stone', 'Vault']) {
+    for (const surface of ['Parquet', 'Warm Plaster', 'Limestone', 'Trim', 'Deep Stone', 'Vault',
+      'Coffer', 'Gilding', 'Floor Inlay', 'Porphyry', 'Intarsia', 'Alcove Stone', 'Fluting']) {
       const mesh = content.meshes.find(({ name }) => name === surface);
-      expect(mesh?.primitives.length, surface).toBeGreaterThan(0);
+      expect(mesh?.primitives.length ?? 0, surface).toBeGreaterThan(0);
       for (const primitive of mesh!.primitives) expect(primitive.attributes.TEXCOORD_1, surface).toBeTypeOf('number');
     }
     const atlas = await readFile('public/materials/gallery-light.webp');
     expect(atlas.toString('ascii', 8, 12)).toBe('WEBP');
+  });
+
+  it('ships the gallery shell and its light map within 1 MiB', async () => {
+    const assets = await Promise.all(['public/models/gallery.glb', 'public/materials/gallery-light.webp'].map((file) => readFile(file)));
+    expect(assets.reduce((bytes, asset) => bytes + asset.byteLength, 0)).toBeLessThanOrEqual(1024 * 1024);
   });
 
   it('has exactly one named anchor for every manifest exhibit', async () => {

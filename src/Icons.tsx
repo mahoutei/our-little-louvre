@@ -8,6 +8,7 @@ const paths: Record<string, ReactNode> = {
   reset: <><path d="M4 11a8 8 0 1 1 2 7M4 5v6h6" /></>,
   letter: <><rect x="3" y="5" width="18" height="14" rx="1" /><path d="m3 7 9 6 9-6" /></>,
   key: <><circle cx="7.5" cy="7.5" r="4.25" /><path d="m10.5 10.5 10 10m-3.25-3.25 2.5-2.5m-5.4-0.4 2.2-2.2" /></>,
+  menu: <path d="M5 7h14M5 12h14M5 17h14" />,
 };
 
 export function Icon({ name, size = 19 }: { name: keyof typeof paths; size?: number }) {
