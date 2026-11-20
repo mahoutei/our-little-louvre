@@ -6,7 +6,7 @@ A phone-first, first-person museum for two. Enter through the blue-hour courtyar
 
 - Opening the museum requires a magic link sent to one of two addresses: `OWNER_EMAIL` and `PARTNER_EMAIL`. There are no public accounts and no strangers.
 - The **Private studio** at `/studio` is where either of you can upload a photograph, edit its label, remove it, rewrite the letter, and change the name shown on your labels.
-- New photographs hang in the **New Wing**. Each alley holds six frames. A removed photograph leaves a gap that is filled before the museum opens another alley, and the wing stops growing at 24 alleys (144 photographs).
+- New photographs hang in the **New Wing**. The walkthrough starts beside the first visible photograph, and **Browse New Wing photos** opens the same collection by room. New photos fill free frames before another room opens, up to six frames per room and 24 rooms.
 - Photographs live in a private Supabase Storage bucket. The API issues short-lived signed URLs for display after it has checked your session.
 - The ten original exhibits keep their baked Blender frames. Their labels can still be edited in the studio.
 

@@ -104,9 +104,8 @@ kbd { display: inline-grid; place-items: center; min-width: 1.14rem; height: 1.2
 .new-wing-heading h2 { margin: 0.4rem 0 0.6rem; font: 400 clamp(2.7rem, 7vw, 5rem)/0.98 var(--serif); }
 .new-wing-heading > p:last-child { color: #cfc0ad; line-height: 1.65; }
 .wing-alley { margin-top: clamp(1.4rem, 3.5vw, 2.4rem); }
-.wing-alley-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: 0.7rem; padding-bottom: 0.4rem; border-bottom: 1px solid #e7cfa733; }
-.wing-alley-heading h3 { margin: 0; font: 400 clamp(1.65rem, 3.4vw, 2.35rem)/1 var(--serif); }
-.wing-alley-heading span { color: #a99984; font-size: 0.64rem; font-weight: 650; letter-spacing: 0.16em; text-transform: uppercase; }
+.wing-alley-heading { margin-bottom: 0.7rem; padding-bottom: 0.4rem; border-bottom: 1px solid #e7cfa733; }
+.wing-alley-heading :is(h2, h3) { margin: 0; font: 400 clamp(1.65rem, 3.4vw, 2.35rem)/1 var(--serif); }
 .center-state { min-height: 60svh; display: grid; justify-items: center; align-content: center; gap: 1rem; padding: 1rem; text-align: center; }
 
 .exhibit-dialog {
@@ -191,7 +190,7 @@ kbd { display: inline-grid; place-items: center; min-width: 1.14rem; height: 1.2
   .exhibit-dialog:not(.exhibit-dialog--letter) .exhibit-copy { padding-top: 3rem; }
 }
 
-@media (max-width: 455px) {
+@media (max-width: 500px) {
   .app--museum, .walkthrough { --scene-header-height: calc(89px + 0.45rem); }
   .app--museum .masthead { row-gap: 0; }
   .app--museum .masthead-actions { flex-basis: 100%; }

@@ -354,12 +354,12 @@ export function Studio() {
       const collection = parseCollection(result.collection);
       applyCollection(collection);
       input.reset();
-      const spot = `Alley ${result.slot.alleyIndex + 1}, frame ${result.slot.slotIndex + 1}`;
+      const spot = `Room ${result.slot.alleyIndex + 1}, frame ${result.slot.slotIndex + 1}`;
       setNotice({
         tone: 'good',
         text: result.slot.newAlley
-          ? `${spot}. A brand-new alley opened for it — the museum just grew.`
-          : `${spot}. ${result.slot.remainingInAlley} frame${result.slot.remainingInAlley === 1 ? '' : 's'} left in that alley.`,
+          ? `${spot}. A new room opened for this photograph.`
+          : `${spot}. ${result.slot.remainingInAlley} frame${result.slot.remainingInAlley === 1 ? '' : 's'} left in this room.`,
       });
     } catch (error) {
       if (token && paths.length) await api.discardUploads(token, paths).catch(() => undefined);
@@ -479,11 +479,11 @@ export function Studio() {
       <header className="studio-heading">
         <p className="eyebrow">Private studio</p>
         <h1>What should the museum hold?</h1>
-        <p>Every photograph you hang in the New Wing finds its own frame. When an alley is full, the museum quietly opens another one.</p>
+        <p>Every photograph you hang in the New Wing finds its own frame. When a room is full, the museum opens another one.</p>
         <dl className="studio-stats">
           <div><dt>Original collection</dt><dd>{data.stats.originals}</dd></div>
           <div><dt>In the New Wing</dt><dd>{data.stats.wing}</dd></div>
-          <div><dt>Alleys</dt><dd>{data.stats.alleys || 0}</dd></div>
+          <div><dt>Rooms</dt><dd>{data.stats.alleys || 0}</dd></div>
           <div><dt>Frames each</dt><dd>{data.stats.capacity}</dd></div>
         </dl>
         {demo && <p className="studio-demo-note" role="status">This is the public preview. The private studio is read-only until one of the two keys is used.</p>}
@@ -525,14 +525,14 @@ export function Studio() {
           <div>
             <p className="eyebrow">The New Wing</p>
             <h2 id="studio-wing-heading">Your photographs</h2>
-            <p>{collection.wing.total} photograph{collection.wing.total === 1 ? '' : 's'} hung across {data.stats.alleys || 0} alley{data.stats.alleys === 1 ? '' : 's'}, {data.stats.capacity} frames in each.</p>
+            <p>{collection.wing.total} photograph{collection.wing.total === 1 ? '' : 's'} hung across {data.stats.alleys || 0} room{data.stats.alleys === 1 ? '' : 's'}, {data.stats.capacity} frames in each.</p>
           </div>
         </div>
         {wingPhotos.length ? <ul className="studio-list">
           {wingPhotos.map((exhibit) => <li key={exhibit.id} className="studio-item">
             <img className="studio-thumb" src={exhibit.thumbnailUrl} alt="" loading="lazy" />
             <div className="studio-item-copy">
-              <p className="studio-item-where">Alley {exhibit.alleyIndex + 1} · Frame {exhibit.slotIndex + 1}{exhibit.published ? '' : ' · hidden'}</p>
+              <p className="studio-item-where">Room {exhibit.alleyIndex + 1} · Frame {exhibit.slotIndex + 1}{exhibit.published ? '' : ' · hidden'}</p>
               <h3>{exhibit.title}</h3>
               <p>{exhibit.dateLabel ? `${exhibit.dateLabel} · ` : ''}{exhibit.caption}</p>
               {exhibit.authorName && <p className="studio-byline">Hung by {exhibit.authorName}</p>}
@@ -549,7 +549,7 @@ export function Studio() {
             {editingId === exhibit.id && <ExhibitEditor exhibit={exhibit} wing busy={busyId === exhibit.id} onCancel={() => setEditingId(undefined)}
               onSave={(patch) => saveExhibit(exhibit.id, patch)} />}
           </li>)}
-        </ul> : <p className="studio-empty">The New Wing is waiting for its first photograph. The first one opens Alley I.</p>}
+        </ul> : <p className="studio-empty">The New Wing is waiting for its first photograph. The first one opens Room 1.</p>}
       </section>
 
       <section className="studio-panel studio-collection" aria-labelledby="studio-original-heading">

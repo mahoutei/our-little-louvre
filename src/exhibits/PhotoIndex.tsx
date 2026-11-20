@@ -1,18 +1,41 @@
-import type { Wing } from '../../shared/types';
+import type { RefObject } from 'react';
+import type { WingAlley } from '../../shared/types';
 import { Icon } from '../Icons';
 import type { DisplayExhibit, Manifest } from './manifest';
 
 const chapters = ['How It Started', 'The Days We Keep', 'Only We Would Remember'];
 
-export function PhotoIndex({ manifest, wing, onOpen }: {
+export function PhotoIndex({ manifest, wingRooms, wingOnly, focusRegion, onOpen }: {
   manifest: Manifest;
-  wing?: Wing;
+  wingRooms: readonly WingAlley[];
+  wingOnly?: boolean;
+  focusRegion?: RefObject<HTMLElement | null>;
   onOpen: (exhibit: DisplayExhibit, letter?: boolean) => void;
 }) {
+  const RoomTitle = wingOnly ? 'h2' : 'h3';
+  const newWing = <>
+    {wingRooms.map(({ index, exhibits }) => <section className="wing-alley" key={index} aria-labelledby={`wing-room-${index}`}>
+      <div className="wing-alley-heading"><RoomTitle id={`wing-room-${index}`}>Room {index + 1}</RoomTitle></div>
+      <div className="photo-grid">
+        {exhibits.map((exhibit) => <button className="photo-card" key={exhibit.id} onClick={() => onOpen(exhibit)}>
+          <span className="photo-card-image"><img src={exhibit.thumbnailUrl} alt="" loading="lazy" /></span>
+          <span className="photo-card-label">{exhibit.title}<Icon name="arrow" /></span>
+        </button>)}
+      </div>
+    </section>)}
+  </>;
+  if (wingOnly) return <main className="collection-page" id="main-content" ref={focusRegion} tabIndex={-1}>
+    <header className="collection-heading">
+      <p className="eyebrow">The collection</p>
+      <h1>The New Wing</h1>
+      <p>{wingRooms.length ? 'Choose a photograph to read its story.' : 'New memories will hang here.'}</p>
+    </header>
+    {newWing}
+  </main>;
+
   const finale = manifest.exhibits.find(({ id }) => id === manifest.finale.exhibitId)!;
   const photos = manifest.exhibits.filter(({ id }) => id !== finale.id);
   const chapterSize = Math.ceil(photos.length / chapters.length);
-  const wingPhotos = wing?.alleys.flatMap((alley) => alley.exhibits).filter((exhibit) => exhibit.published) ?? [];
   return (
     <main className="collection-page" id="main-content">
       <header className="collection-heading">
@@ -44,28 +67,13 @@ export function PhotoIndex({ manifest, wing, onOpen }: {
           </div>
         </div>
       </section>
-      {wing && wingPhotos.length > 0 && <section className="new-wing" aria-labelledby="new-wing-heading">
+      {wingRooms.length > 0 && <section className="new-wing" aria-labelledby="new-wing-heading">
         <header className="new-wing-heading">
           <p className="eyebrow">An expanding collection</p>
           <h2 id="new-wing-heading">The New Wing</h2>
-          <p>{wing.total} photograph{wing.total === 1 ? '' : 's'} across {wing.alleys.length} alley{wing.alleys.length === 1 ? '' : 's'}. The museum makes room for every new memory.</p>
+          <p>Memories we’ve added along the way.</p>
         </header>
-        {wing.alleys.map((alley) => {
-          const exhibits = alley.exhibits.filter((exhibit) => exhibit.published);
-          if (!exhibits.length) return null;
-          return <section className="wing-alley" key={alley.index} aria-labelledby={`alley-${alley.index}`}>
-            <div className="wing-alley-heading">
-              <h3 id={`alley-${alley.index}`}>Alley {alley.index + 1}</h3>
-              <span>{exhibits.length} of {wing.capacity} frames</span>
-            </div>
-            <div className="photo-grid">
-              {exhibits.map((exhibit) => <button className="photo-card" key={exhibit.id} onClick={() => onOpen(exhibit)}>
-                <span className="photo-card-image"><img src={exhibit.thumbnailUrl} alt="" loading="lazy" /></span>
-                <span className="photo-card-label">{exhibit.title}<Icon name="arrow" /></span>
-              </button>)}
-            </div>
-          </section>;
-        })}
+        {newWing}
       </section>}
     </main>
   );

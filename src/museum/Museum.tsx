@@ -5,7 +5,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { ACESFilmicToneMapping, PerspectiveCamera, Raycaster, Vector3 } from 'three';
 import type { Group, Ray } from 'three';
-import type { Wing } from '../../shared/types';
+import type { WingAlley } from '../../shared/types';
 import type { DisplayExhibit, Manifest } from '../exhibits/manifest';
 import { Icon } from '../Icons';
 import { ExhibitFrame, useFramePlacements } from './ExhibitFrames';
@@ -19,11 +19,12 @@ import { galleryLightUrl } from './SurfaceDetail';
 import { TouchControls } from './TouchControls';
 import { requestMouseLook, useWalkInput } from './useWalkInput';
 import type { WalkInput } from './useWalkInput';
-import { alleyCountOf, useWingPlacements, WingArchitecture, WingFrames } from './Wing';
-import { wingSpawn, wingWalls } from './wingLayout';
+import { useWingPlacements, WingArchitecture } from './Wing';
+import { wingRoomAt, wingSpawn, wingWalls } from './wingLayout';
 
 type Props = {
-  room: Room; manifest?: Manifest; wing?: Wing; spawn?: Pose; active: boolean; visible: boolean; reset: number;
+  room: Room; manifest?: Manifest; wingRooms: readonly WingAlley[]; wingRoomIndex: number; onWingRoomChange: (index: number) => void;
+  spawn?: Pose; active: boolean; visible: boolean; reset: number;
   doorRequest: number; unlocking: boolean; onDoorProximity: (near: boolean) => void; onUnlock: () => void;
   onReady: (room: Room) => void; onDoorOpened: () => void; onOpen: (exhibit: DisplayExhibit) => void; onFailure: () => void;
 };
@@ -168,20 +169,19 @@ function World({ room, spawn, input, active, reset, doorRequest, unlocking, onDo
   </>;
 }
 
-const EMPTY_WING: Wing = { capacity: 6, alleys: [], total: 0 };
-
-function WingWorld({ wing = EMPTY_WING, input, active, reset, onReady, onFailure, onOpen, target, setTarget }: RoomProps) {
+function WingWorld({ wingRooms, wingRoomIndex, onWingRoomChange, input, active, reset, onReady, onFailure, onOpen, target, setTarget }: RoomProps) {
   const { camera, gl, size } = useThree();
   const canvas = gl.domElement;
-  const count = Math.max(1, alleyCountOf(wing));
-  const spawn = useMemo(() => wingSpawn(), []);
+  const count = wingRooms.length;
+  const firstSlot = wingRooms[0]?.exhibits[0]?.slotIndex ?? 0;
+  const spawn = useMemo(() => wingSpawn(firstSlot), [firstSlot]);
   const walls = useMemo(() => wingWalls(count), [count]);
   const pose = useRef({ ...spawn });
   const lastTargetCheck = useRef(0);
   const architecture = useRef<Group>(null);
   const vectors = useMemo(() => ({ forward: new Vector3(), offset: new Vector3(), front: new Vector3() }), []);
   const sightline = useMemo(() => new Raycaster(), []);
-  const placements = useWingPlacements(wing);
+  const placements = useWingPlacements(wingRooms);
 
   function canClickFrame(ray: Ray, point: Vector3) {
     if (!active || document.pointerLockElement === canvas || performance.now() - input.current.lastDrag <= 250) return false;
@@ -200,7 +200,8 @@ function WingWorld({ wing = EMPTY_WING, input, active, reset, onReady, onFailure
     camera.rotation.set(spawn.pitch, spawn.yaw, 0, 'YXZ');
     clearInput(input.current);
     setTarget();
-  }, [camera, input, setTarget, spawn]);
+    onWingRoomChange(0);
+  }, [camera, input, onWingRoomChange, setTarget, spawn]);
 
   useLayoutEffect(() => { placePlayer(); }, [placePlayer, reset]);
   useLayoutEffect(() => {
@@ -235,6 +236,8 @@ function WingWorld({ wing = EMPTY_WING, input, active, reset, onReady, onFailure
     const now = performance.now();
     if (now - lastTargetCheck.current < 90) return;
     lastTargetCheck.current = now;
+    const currentRoom = wingRoomAt(player.z, count);
+    if (currentRoom !== wingRoomIndex) onWingRoomChange(currentRoom);
     camera.getWorldDirection(vectors.forward);
     let bestDot = 0.925;
     let best: DisplayExhibit | undefined;
@@ -255,8 +258,9 @@ function WingWorld({ wing = EMPTY_WING, input, active, reset, onReady, onFailure
   });
 
   return <>
-    <group ref={architecture}><WingArchitecture wing={wing} /></group>
-    <WingFrames wing={wing} onOpen={onOpen} enabled={canClickFrame} />
+    <group ref={architecture}><WingArchitecture rooms={wingRooms} /></group>
+    {placements.map((placement) => <ExhibitFrame key={placement.exhibit.id} placement={placement} onInspect={onOpen}
+      enabled={canClickFrame} size={1.5} lit={wingRoomAt(placement.position.z, count) === wingRoomIndex} />)}
   </>;
 }
 

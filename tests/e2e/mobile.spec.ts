@@ -11,6 +11,8 @@ test('the signed-in phone header leaves scene captions clear at each width and a
   await expect(caption).toBeVisible();
   // Demo mode omits the authenticated navigation link that caused the overlap.
   await page.locator('.masthead-actions').evaluate((nav) => {
+    const browse = nav.querySelector('button');
+    if (browse?.lastChild instanceof Text) browse.lastChild.data = ' Browse New Wing photos';
     const link = document.createElement('a');
     link.className = 'masthead-link masthead-link--quiet';
     link.href = '/studio';
@@ -19,7 +21,7 @@ test('the signed-in phone header leaves scene captions clear at each width and a
   });
   await page.evaluate(() => document.fonts.ready);
   const cdp = await context.newCDPSession(page);
-  for (const width of [320, 390, 430, 667]) {
+  for (const width of [320, 390, 430, 470, 667]) {
     const landscape = width === 667;
     await page.setViewportSize({ width, height: landscape ? 375 : 844 });
     await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: landscape

@@ -1,5 +1,7 @@
+import type { Wing, WingAlley } from '../../shared/types';
 import type { Pose, Wall } from './layout';
 import { galleryBackZ } from './layout';
+import { EYE_HEIGHT } from './movement';
 
 export const WING = {
   entryHalfWidth: 2.2,
@@ -29,8 +31,34 @@ export function alleyCenterZ(index: number): number {
   return alleyStartZ(index) - WING.alleyDepth / 2;
 }
 
-export function wingSpawn(): Pose {
-  return { x: 0, z: galleryBackZ - WING.entryDepth + 0.8, yaw: 0, pitch: 0.025 };
+export function visibleWingRooms(wing?: Wing): WingAlley[] {
+  return (wing?.alleys ?? []).flatMap((alley) => {
+    const exhibits = alley.exhibits.filter(({ published }) => published).sort((a, b) => a.slotIndex - b.slotIndex);
+    return exhibits.length ? [{ ...alley, exhibits }] : [];
+  }).sort((a, b) => a.index - b.index);
+}
+
+export function wingFramePosition(room: number, slot: number) {
+  return {
+    x: (slot % 2 === 0 ? -1 : 1) * (WING.roomHalfWidth - 0.1),
+    y: WING.frameHeight,
+    z: alleyCenterZ(room) + (1 - Math.floor(slot / 2)) * WING.frameSpacing,
+  };
+}
+
+export function wingSpawn(firstSlot: number): Pose {
+  const frame = wingFramePosition(0, firstSlot);
+  const approach = 1.3;
+  return {
+    x: 0, z: frame.z + approach,
+    yaw: Math.atan2(-frame.x, approach),
+    pitch: Math.atan2(frame.y - EYE_HEIGHT, Math.hypot(frame.x, approach)),
+  };
+}
+
+export function wingRoomAt(z: number, count: number): number {
+  const relative = alleyStartZ(0) + WING.passageDepth / 2 - z;
+  return Math.max(0, Math.min(count - 1, Math.floor(relative / (WING.alleyDepth + WING.passageDepth))));
 }
 
 /**
