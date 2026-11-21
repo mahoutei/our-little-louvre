@@ -48,6 +48,9 @@ h1, h2, p { margin: 0; }
 .button--glass:hover { background: #292927; border-color: #e9cfa7; }
 .button--outline { border-color: #a68b6f; background: transparent; color: inherit; }
 .button--outline:hover { background: #ad896626; }
+.button--text { background: transparent; text-decoration: underline; text-underline-offset: 0.18rem; }
+.button--danger { border-color: #bc725b; color: #ffd8ca; background: #7d3b2b; }
+.button--danger:hover { background: #944735; border-color: #d38b74; }
 .button-row { display: flex; flex-wrap: wrap; gap: 0.7rem; }
 .eyebrow { color: #dec094; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.22em; font-weight: 650; line-height: 1.5; }
 
@@ -161,12 +164,24 @@ kbd { display: inline-grid; place-items: center; min-width: 1.14rem; height: 1.2
 .exhibit-image { min-height: 260px; display: grid; place-items: center; background: #252623; color: var(--paper); }
 .exhibit-image > img { width: 100%; max-height: 60svh; object-fit: contain; }
 .exhibit-copy { padding: clamp(3.5rem, 7vw, 5rem) clamp(1.1rem, 3vw, 2.4rem) 2.2rem; align-self: center; }
-.exhibit-copy h2, .letter-body h2 { font: 400 clamp(2.5rem, 6vw, 4.35rem)/1 var(--serif); margin-bottom: 0.7rem; }
+.exhibit-copy h2, .letter-body h2, .exhibit-form h2 { font: 400 clamp(2.5rem, 6vw, 4.35rem)/1 var(--serif); margin-bottom: 0.7rem; }
 .exhibit-copy p, .letter-body p { color: #4d3d32; font-size: 0.98rem; line-height: 1.65; }
 .exhibit-copy .eyebrow { color: #6f5331; margin-bottom: 0.35rem; }
 .exhibit-copy .button { margin-top: 1.1rem; }
-.exhibit-dialog--letter { width: min(630px, var(--dialog-width)); }
-.exhibit-dialog--letter .dialog-content { display: block; }
+.exhibit-copy .button-row { margin-top: 1.1rem; }
+.exhibit-copy .button-row .button { margin-top: 0; }
+:is(.exhibit-dialog--letter, .exhibit-dialog--form) { width: min(630px, var(--dialog-width)); }
+:is(.exhibit-dialog--letter, .exhibit-dialog--form) .dialog-content { display: block; }
+.exhibit-form { padding: clamp(2.6rem, 6vw, 3.7rem) clamp(1.1rem, 6vw, 3.05rem) 1.75rem; }
+.exhibit-form h2 { padding-inline-end: 1.4rem; }
+.exhibit-form .button-row { margin-top: 1.2rem; }
+.exhibit-form .studio-edit { margin-top: 1.15rem; padding: 0; border: 0; background: transparent; }
+.exhibit-form :is(.studio-field label, .studio-hint, .studio-text-button) { color: #6f5331; }
+.exhibit-form .studio-field :is(input, textarea) { color: #251e18; background: #fff9ef; font-size: 1rem; }
+.exhibit-form .studio-field input[type="file"] { min-width: 0; }
+.exhibit-form .studio-thumb { max-width: 11rem; }
+.exhibit-form .studio-field-error, .exhibit-dialog .exhibit-photo-error { color: #883a29; }
+.exhibit-photo-error { margin-top: 0.9rem; }
 .letter-body { padding: clamp(2.25rem, 7vw, 3.85rem); }
 .letter-body h2 { padding-inline-end: 1.4rem; }
 .letter-body > svg { color: #77542f; margin-bottom: 0.72rem; }

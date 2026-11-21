@@ -20,6 +20,17 @@ describe('the visitor layout of the New Wing', () => {
     expect(visibleWingRooms({ capacity: 6, total: 1, alleys: [alley(0, photo(0, 0, false))] })).toEqual([]);
   });
 
+  it('keeps occupied rooms walkable for the rest of the visit after photos are removed', () => {
+    const previous = [alley(0, photo(0, 0)), alley(2, photo(2, 4))];
+    const next = { capacity: 6, total: 1, alleys: [alley(2, photo(2, 4))] };
+    const rooms = visibleWingRooms(next, previous);
+    expect(rooms.map(({ index, exhibits }) => [index, exhibits.length])).toEqual([[0, 0], [2, 1]]);
+    const inside = wingPoint(WING.passageCenter, alleyStartZ(1) - 0.7);
+    const corridor = moveOnFloor(inside, { x: -4, z: 0 }, wingWalls(rooms.length));
+    expect(corridor.x).toBeCloseTo(inside.x - 4);
+    expect(visibleWingRooms(next).map(({ index }) => index)).toEqual([2]);
+  });
+
   it('lets visitors walk into the alcove and back through the same arch', () => {
     const walls = [...gallery.walls, ...wingWalls(1)];
     const start = wingPoint(0, 1.7);

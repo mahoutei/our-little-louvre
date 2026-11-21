@@ -7,6 +7,7 @@ A phone-first, first-person museum for two. Enter through the blue-hour courtyar
 - Opening the museum requires a magic link sent to one of two addresses: `OWNER_EMAIL` and `PARTNER_EMAIL`. There are no public accounts and no strangers.
 - The invitation opens with three short lines. You can pause the opening, skip to the envelope, or browse photos right away. **Take the brass key** begins the courtyard visit.
 - The **Private studio** at `/studio` is where either of you can upload a photograph, edit its label, remove it, rewrite the letter, and change the name shown on your labels.
+- Open a photo during the walkthrough or in **Browse photos** to use **Edit photo** or **Remove photo** directly. Edits appear in the same frame.
 - New photographs hang in the **New Wing**, through the spotlit arch on the right just before the letter exhibit. The same photos are available under **Browse photos**. New photos fill free frames before another room opens, up to six frames per room and 24 rooms.
 - Photographs live in a private Supabase Storage bucket. The API issues short-lived signed URLs for display after it has checked your session.
 - In Private studio, use **Edit photo** on any original or New Wing photograph to update its title, story, date, description, or image. **Remove** clears an original frame so you can fill it again with **Add photo**. The final letter remains available. Removing a New Wing photograph frees its slot for the next upload.

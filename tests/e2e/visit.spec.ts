@@ -17,6 +17,8 @@ test('the photo-only visit supports the keyboard, focus return, and the letter',
   const dialog = page.getByRole('dialog');
   await expect(dialog).toHaveAccessibleName('After the Rain');
   await expect(dialog).toContainText('The sidewalks were still shining');
+  await expect(dialog.getByRole('button', { name: 'Edit photo', exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Remove photo', exact: true })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
   await expect(photograph).toBeFocused();

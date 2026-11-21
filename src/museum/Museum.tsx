@@ -182,7 +182,7 @@ function World({ room, wingRooms, input, active, reset, doorRequest, unlocking, 
       bestDot = dot;
       best = exhibit;
     }
-    if (target.current?.id !== best?.id) setTarget(best);
+    if (target.current !== best) setTarget(best);
   });
 
   return <>

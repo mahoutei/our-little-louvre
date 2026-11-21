@@ -349,6 +349,9 @@ describe('private routes', () => {
     const visit = await app.request('/api/collection', { headers: auth });
     expect(visit.status).toBe(200);
     expect((await visit.json()).collection.manifest.exhibits.map(({ id }: { id: string }) => id)).not.toContain('original-0');
+    const gallery = await app.request('/api/exhibits/original-0?view=gallery', { method: 'DELETE', headers: auth });
+    expect(gallery.status).toBe(200);
+    expect((await gallery.json()).collection.manifest.exhibits.map(({ id }: { id: string }) => id)).not.toContain('original-0');
     expect(state.exhibitDelete).not.toHaveBeenCalled();
     expect(state.remove).not.toHaveBeenCalled();
   });

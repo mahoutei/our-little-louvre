@@ -86,10 +86,10 @@ export const api = {
     request<{ ok: true }>('/uploads/discard', { token, method: 'POST', body: { paths } }),
   createExhibit: (token: string, input: NewExhibitInput) =>
     request<{ collection: Collection; slot: WingSlot }>('/exhibits', { token, method: 'POST', body: input }),
-  updateExhibit: (token: string, id: string, patch: ExhibitPatch) =>
-    request<{ collection: Collection }>(`/exhibits/${encodeURIComponent(id)}`, { token, method: 'PATCH', body: patch }),
-  deleteExhibit: (token: string, id: string) =>
-    request<{ collection: Collection }>(`/exhibits/${encodeURIComponent(id)}`, { token, method: 'DELETE' }),
+  updateExhibit: (token: string, id: string, patch: ExhibitPatch, view?: 'gallery') =>
+    request<{ collection: Collection }>(`/exhibits/${encodeURIComponent(id)}${view ? '?view=gallery' : ''}`, { token, method: 'PATCH', body: patch }),
+  deleteExhibit: (token: string, id: string, view?: 'gallery') =>
+    request<{ collection: Collection }>(`/exhibits/${encodeURIComponent(id)}${view ? '?view=gallery' : ''}`, { token, method: 'DELETE' }),
   saveLetter: (token: string, letter: { title: string; paragraphs: string[]; updatedAt: string }) =>
     request<{ letter: LetterView; collection: Collection }>('/letter', { token, method: 'PUT', body: letter }),
 };

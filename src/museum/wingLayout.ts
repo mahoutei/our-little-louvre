@@ -31,11 +31,20 @@ export function alleyCenterZ(index: number): number {
   return alleyStartZ(index) - WING.alleyDepth / 2;
 }
 
-export function visibleWingRooms(wing?: Wing): WingAlley[] {
-  return (wing?.alleys ?? []).flatMap((alley) => {
+export function visibleWingRooms(wing?: Wing, previousRooms?: readonly WingAlley[]): WingAlley[] {
+  const rooms = (wing?.alleys ?? []).flatMap((alley) => {
     const exhibits = alley.exhibits.filter(({ published }) => published).sort((a, b) => a.slotIndex - b.slotIndex);
     return exhibits.length ? [{ ...alley, exhibits }] : [];
   }).sort((a, b) => a.index - b.index);
+  if (!previousRooms?.length) return rooms;
+
+  const byIndex = new Map(rooms.map((room) => [room.index, room]));
+  const retained = previousRooms.map((room) => {
+    const updated = byIndex.get(room.index);
+    byIndex.delete(room.index);
+    return updated ?? { ...room, exhibits: [] };
+  });
+  return [...retained, ...byIndex.values()];
 }
 
 export function wingFramePosition(room: number, slot: number, featured: boolean) {

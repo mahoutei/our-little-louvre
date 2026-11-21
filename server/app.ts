@@ -306,7 +306,7 @@ app.patch('/exhibits/:id', async (c) => {
     throw error;
   }
   await removeRetiredUploads(retired);
-  return c.json({ collection: await buildCollection(member, true) });
+  return c.json({ collection: await buildCollection(member, c.req.query('view') !== 'gallery') });
 });
 
 app.delete('/exhibits/:id', async (c) => {
@@ -324,7 +324,7 @@ app.delete('/exhibits/:id', async (c) => {
     return retireUnattachedUploads(tx, [existing.imagePath, existing.thumbPath]);
   });
   await removeRetiredUploads(retired);
-  return c.json({ collection: await buildCollection(member, true) });
+  return c.json({ collection: await buildCollection(member, c.req.query('view') !== 'gallery') });
 });
 
 app.put('/letter', async (c) => {

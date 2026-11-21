@@ -1,18 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ChangeEvent, FormEvent, ReactNode } from 'react';
-import { LIMITS, STORAGE_BUCKET } from '../../shared/config';
+import type { ChangeEvent, FormEvent } from 'react';
+import { LIMITS } from '../../shared/config';
 import type { Collection, ExhibitBase, ExhibitFields, ExhibitPatch, LetterView, MemberView, PhotoUpload, StudioData } from '../../shared/types';
 import { fieldsFrom, validateExhibitFields } from '../../shared/validation';
 import { api, ApiError } from '../api/client';
 import { demoCollection } from '../api/demo';
 import { useAuth } from '../auth/AuthProvider';
-import { supabase } from '../auth/supabase';
 import { parseCollection } from '../exhibits/collection';
 import { loadManifest } from '../exhibits/manifest';
 import { Icon } from '../Icons';
-import { describeBytes, prepareImage } from './image';
+import { describeBytes } from './image';
+import { ExhibitEditor, Field, savePhoto, uploadPhoto, usePhotoDraft } from '../exhibits/ExhibitEditor';
 import type { PreparedImage } from './image';
-import './studio.css';
 
 type Notice = { tone: 'good' | 'bad'; text: string; exhibitId?: string } | null;
 
@@ -31,72 +30,6 @@ function statsOf(collection: Collection): StudioData['stats'] {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong in the museum office.';
-}
-
-function usePhotoDraft() {
-  const [draft, setDraft] = useState<{ preview: string; prepared?: PreparedImage; error?: string }>();
-  const activeUrl = useRef<string | undefined>(undefined);
-
-  const releaseUrl = useCallback(() => {
-    if (activeUrl.current) URL.revokeObjectURL(activeUrl.current);
-    activeUrl.current = undefined;
-  }, []);
-
-  useEffect(() => releaseUrl, [releaseUrl]);
-
-  async function choose(file?: File) {
-    if (!file) return;
-    releaseUrl();
-    const preview = URL.createObjectURL(file);
-    activeUrl.current = preview;
-    setDraft({ preview });
-    try {
-      const prepared = await prepareImage(file);
-      if (activeUrl.current === preview) setDraft({ preview, prepared });
-    } catch (error) {
-      if (activeUrl.current === preview) setDraft({ preview, error: messageOf(error) });
-    }
-  }
-
-  function reset() {
-    releaseUrl();
-    setDraft(undefined);
-  }
-
-  return { ...draft, preparing: Boolean(draft && !draft.prepared && !draft.error), choose, reset };
-}
-
-async function uploadPhoto(token: string, prepared: PreparedImage): Promise<PhotoUpload> {
-  if (!supabase) throw new Error('The photograph store is not configured.');
-  const { files } = await api.createUploads(token, [
-    { kind: 'full', contentType: prepared.full.type },
-    { kind: 'thumb', contentType: prepared.thumb.type },
-  ]);
-  try {
-    const full = files.find((file) => file.kind === 'full');
-    const thumb = files.find((file) => file.kind === 'thumb');
-    if (!full || !thumb) throw new Error('The upload was not prepared completely. Try again.');
-    for (const file of [full, thumb]) {
-      const body = file === full ? prepared.full : prepared.thumb;
-      const { error } = await supabase.storage.from(STORAGE_BUCKET)
-        .uploadToSignedUrl(file.path, file.token, body, { contentType: body.type });
-      if (error) throw new Error(`The ${file === full ? 'photograph' : 'thumbnail'} could not be uploaded: ${error.message}`);
-    }
-    return { imagePath: full.path, thumbPath: thumb.path, width: prepared.width, height: prepared.height };
-  } catch (error) {
-    await api.discardUploads(token, files.map(({ path }) => path)).catch(() => undefined);
-    throw error;
-  }
-}
-
-function Field({ id, label, hint, error, children }: {
-  id: string; label: string; hint?: string; error?: string; children: ReactNode;
-}) {
-  return <div className={`studio-field${error ? ' studio-field--error' : ''}`}>
-    <label htmlFor={id}>{label}</label>
-    {children}
-    {error ? <p className="studio-field-error" role="alert">{error}</p> : hint ? <p className="studio-hint">{hint}</p> : null}
-  </div>;
 }
 
 function NameForm({ member, busy, onSave }: { member: MemberView; busy: boolean; onSave: (name: string) => Promise<void> }) {
@@ -194,70 +127,6 @@ function UploadForm({ busy, onSubmit }: {
     <button className="button button--gold studio-submit" type="submit" disabled={busy || !prepared}>
       <Icon name="arrow" /> {busy ? 'Hanging the photograph…' : 'Hang this photograph'}
     </button>
-  </form>;
-}
-
-function ExhibitEditor({ exhibit, busy, onSave, onCancel }: {
-  exhibit: ExhibitBase;
-  busy: boolean;
-  onSave: (patch: ExhibitPatch, photo?: PreparedImage) => Promise<void>;
-  onCancel: () => void;
-}) {
-  const [fields, setFields] = useState<ExhibitFields>({
-    title: exhibit.title,
-    caption: exhibit.caption,
-    alt: exhibit.alt,
-    dateLabel: exhibit.dateLabel ?? '',
-  });
-  const [published, setPublished] = useState(exhibit.published);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const photo = usePhotoDraft();
-  const fileInput = useRef<HTMLInputElement>(null);
-  const wing = exhibit.origin === 'WING';
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    if (busy || photo.preparing || photo.error) return;
-    const next = fieldsFrom(fields);
-    const found = validateExhibitFields(next);
-    if (Object.keys(found).length) {
-      setErrors(found as Record<string, string>);
-      return;
-    }
-    void onSave({ ...next, ...(wing ? { published } : {}) }, photo.prepared);
-  }
-  return <form className="studio-edit" onSubmit={submit} noValidate>
-    <Field id={`edit-photo-${exhibit.id}`} label={exhibit.published || wing ? 'Replace photograph' : 'Choose a photograph for this frame'} error={photo.error}>
-      <input id={`edit-photo-${exhibit.id}`} ref={fileInput} type="file" accept="image/*" disabled={busy}
-        onChange={(event) => void photo.choose(event.target.files?.[0])} />
-    </Field>
-    {photo.preparing && <p className="studio-hint" role="status">Preparing the photograph…</p>}
-    {photo.prepared && <img className="studio-thumb" src={photo.preview} alt="Replacement preview" />}
-    {photo.preview && <button className="studio-text-button" type="button" disabled={busy} onClick={() => {
-      photo.reset();
-      if (fileInput.current) fileInput.current.value = '';
-    }}>Clear selected file</button>}
-    <div className="studio-form-grid">
-      <Field id={`edit-title-${exhibit.id}`} label="Title" error={errors.title}>
-        <input id={`edit-title-${exhibit.id}`} value={fields.title} maxLength={80} required disabled={busy} onChange={(event) => setFields((current) => ({ ...current, title: event.target.value }))} />
-      </Field>
-      <Field id={`edit-date-${exhibit.id}`} label="Date" error={errors.dateLabel}>
-        <input id={`edit-date-${exhibit.id}`} value={fields.dateLabel ?? ''} maxLength={60} disabled={busy} onChange={(event) => setFields((current) => ({ ...current, dateLabel: event.target.value }))} />
-      </Field>
-    </div>
-    <Field id={`edit-story-${exhibit.id}`} label="The story" error={errors.caption}>
-      <textarea id={`edit-story-${exhibit.id}`} value={fields.caption} rows={3} maxLength={600} required disabled={busy} onChange={(event) => setFields((current) => ({ ...current, caption: event.target.value }))} />
-    </Field>
-    <Field id={`edit-alt-${exhibit.id}`} label="Describe the photograph" error={errors.alt}>
-      <input id={`edit-alt-${exhibit.id}`} value={fields.alt} maxLength={240} required disabled={busy} onChange={(event) => setFields((current) => ({ ...current, alt: event.target.value }))} />
-    </Field>
-    {wing && <label className="studio-check">
-      <input type="checkbox" checked={published} disabled={busy} onChange={(event) => setPublished(event.target.checked)} />
-      <span>Show this photograph in the museum</span>
-    </label>}
-    <div className="studio-row-actions">
-      <button className="button button--gold" type="submit" disabled={busy || photo.preparing || Boolean(photo.error)}>{busy ? 'Saving…' : 'Save changes'}</button>
-      <button className="button button--outline" type="button" disabled={busy} onClick={onCancel}>Cancel</button>
-    </div>
   </form>;
 }
 
@@ -388,18 +257,13 @@ export function Studio() {
     if (demo) return;
     setBusyId(id);
     setNotice(null);
-    let token: string | null = null;
-    let replacement: PhotoUpload | undefined;
     try {
-      token = await getToken();
+      const token = await getToken();
       if (!token) throw new Error('Your key has expired. Reload the page and sign in again.');
-      if (photo) replacement = await uploadPhoto(token, photo);
-      const result = await api.updateExhibit(token, id, { ...patch, replacement });
-      applyCollection(parseCollection(result.collection));
+      applyCollection(await savePhoto(token, id, patch, photo));
       setEditingId(undefined);
       setNotice({ tone: 'good', exhibitId: id, text: photo ? 'The new photograph is in the same frame.' : 'The label has been updated.' });
     } catch (error) {
-      if (token && replacement) await api.discardUploads(token, [replacement.imagePath, replacement.thumbPath]).catch(() => undefined);
       setNotice({ tone: 'bad', exhibitId: id, text: error instanceof ApiError && error.fields ? Object.values(error.fields).join(' ') : messageOf(error) });
     } finally {
       setBusyId(undefined);

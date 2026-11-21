@@ -1,7 +1,7 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { preload } from 'react-dom';
-import type { Collection } from '../shared/types';
+import type { Collection, WingAlley } from '../shared/types';
 import { api } from './api/client';
 import { demoCollection } from './api/demo';
 import { useAuth } from './auth/AuthProvider';
@@ -57,6 +57,7 @@ export function App() {
   const [contentFailed, setContentFailed] = useState(false);
   const [selection, setSelection] = useState<{ exhibit: DisplayExhibit; letter?: boolean }>();
   const [visited, setVisited] = useState(false);
+  const [visitWingRooms, setVisitWingRooms] = useState<WingAlley[]>();
   const [reset, setReset] = useState(0);
   const [doorRequest, setDoorRequest] = useState(0);
   const [atDoor, setAtDoor] = useState(false);
@@ -146,6 +147,7 @@ export function App() {
     retryAttempt.current++;
     setRetrying(false);
     setVisited(false);
+    setVisitWingRooms(undefined);
     setReady(undefined);
     setFailed(false);
     setRoom('courtyard');
@@ -174,6 +176,18 @@ export function App() {
   }
 
   const openExhibit = useCallback((exhibit: DisplayExhibit, letter?: boolean) => setSelection({ exhibit, letter }), []);
+  function applyPhotoChange(next: Collection, removed: boolean) {
+    load.current = Promise.resolve(next);
+    if (visited) setVisitWingRooms((previous) => visibleWingRooms(next.wing, previous ?? wingRooms));
+    setCollection(next);
+    setSelection((current) => {
+      if (!current || removed) return undefined;
+      const match = ({ id }: DisplayExhibit) => id === current.exhibit.id;
+      const exhibit = next.manifest.exhibits.find(match)
+        ?? next.wing.alleys.flatMap(({ exhibits }) => exhibits).find(match);
+      return exhibit ? { ...current, exhibit } : undefined;
+    });
+  }
   const unlockDoor = useCallback(() => setUnlocking(true), []);
   const enterGallery = useCallback(() => {
     setRoom('gallery');
@@ -223,7 +237,7 @@ export function App() {
           {menuOpen && <div className="visit-menu-backdrop" aria-hidden="true" onPointerDown={(event) => event.preventDefault()} />}
           {visited && !failed && <MuseumBoundary onFailure={failWalkthrough}>
             <Suspense fallback={null}>
-              <Museum room={room} manifest={manifest} wingRooms={wingRooms}
+              <Museum room={room} manifest={manifest} wingRooms={visitWingRooms ?? wingRooms}
                 active={view === 'museum' && !selection && !loading && !unlocking && !menuOpen} visible={view === 'museum'} reset={reset}
                 doorRequest={doorRequest} unlocking={unlocking} onDoorProximity={setAtDoor} onUnlock={unlockDoor}
                 onReady={setReady} onDoorOpened={enterGallery} onOpen={openExhibit} onFailure={failWalkthrough} />
@@ -252,6 +266,7 @@ export function App() {
         </main>
       )}
       {selection && <ExhibitPanel key={selection.exhibit.id} exhibit={selection.exhibit} startWithLetter={selection.letter} onClose={() => setSelection(undefined)}
+        focusFallback={region} photoEditing={demo ? undefined : { getToken, onChange: applyPhotoChange }}
         letter={selection.exhibit.id === manifest?.finale.exhibitId ? manifest.finale.letterParagraphs : undefined}
         letterTitle={manifest?.finale.letterTitle} />}
     </div>

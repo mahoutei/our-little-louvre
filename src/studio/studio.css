@@ -354,14 +354,6 @@
 
 .studio-check input { width: 1.05rem; height: 1.05rem; accent-color: #c79a5b; }
 
-.button--danger {
-  border-color: #bc725b;
-  color: #ffd8ca;
-  background: #7d3b2b;
-}
-
-.button--danger:hover { background: #944735; border-color: #d38b74; }
-
 .studio-list {
   display: grid;
   margin: 0;
